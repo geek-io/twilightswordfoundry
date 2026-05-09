@@ -14,3 +14,5 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 - Way feats are restricted to Ways on the Champion card.  
 - Way feats are restricted to only once on each Champion, with the exception of if the Way feat says in the description "You can choose this feat multiple times" exactly. These are referred to as "training" feats in the book.
 - Automated some feats to allow for extra uses of spells, items, etc.  
+- "Lockpick" / "Lock Pick" items are a special case consumable item that will prompt in the chat if the Stealth roll is failed to see if the lockpick breaks. If the stealth roll fails again, then the lockpick will be consumed.  
+- Implemented a Boon marker on the Champion sheet.  
