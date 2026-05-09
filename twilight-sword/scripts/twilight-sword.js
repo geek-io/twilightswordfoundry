@@ -233,6 +233,14 @@ async function toggleActorStatus(actor, statusId) {
   }
 }
 
+async function toggleActorBoon(actor) {
+  const hasBoon = actor.system?.boon === true || actor.system?.boon === "true";
+  const nextBoon = !hasBoon;
+
+  await actor.update({ "system.boon": nextBoon });
+  ui.notifications.info(`${actor.name} ${nextBoon ? "has a Boon." : "spent or lost their Boon."}`);
+}
+
 
 
 
@@ -939,8 +947,23 @@ async function rollWeaponAttack(actor, weapon, options = {}) {
   const rawTotal = attackRoll.total;
   const adjustedTotal = Math.max(rawTotal - accurateBonus, 1);
   const target = Number(ability.value);
+  const sharpshooterAttack = actorHasFeatNamed(actor, "sharpshooter") &&
+    !usingArcane &&
+    (isWeaponRanged(weapon) || usingThrown);
+  const cunningStrikeAttack = actorHasFeatNamed(actor, "cunning strike") &&
+    !usingArcane &&
+    feats.has("small");
+  const swordplayAttack = actorHasFeatNamed(actor, "swordplay") &&
+    !usingArcane &&
+    !usingThrown &&
+    !isWeaponRanged(weapon);
+  const swordplayDamage = actorHasFeatNamed(actor, "swordplay") &&
+    !usingArcane &&
+    feats.has("finesse");
 
-  const crit = rawTotal === 1;
+  const crit = rawTotal === 1 ||
+    (sharpshooterAttack && rawTotal === 2) ||
+    (swordplayAttack && rawTotal === 2);
   const fumble = rawTotal === 12;
   const hit = crit || (!fumble && adjustedTotal <= target);
 
@@ -952,7 +975,21 @@ async function rollWeaponAttack(actor, weapon, options = {}) {
     damageFormula = `(${damageFormula}) + 1`;
   }
 
-  if (crit) damageFormula = `(${damageFormula}) * 2`;
+  if (sharpshooterAttack) {
+    damageFormula = `(${damageFormula}) + 1`;
+  }
+
+  if (cunningStrikeAttack) {
+    damageFormula = `(${damageFormula}) + 1`;
+  }
+
+  if (swordplayDamage) {
+    damageFormula = `(${damageFormula}) + 1`;
+  }
+
+  if (crit) {
+    damageFormula = `(${damageFormula}) * ${cunningStrikeAttack ? 3 : 2}`;
+  }
 
   const baseDamageRoll = hit ? await new Roll(damageFormula).evaluate() : null;
   const elementalDamageType = getWeaponElementalDamageType(weapon);
@@ -988,6 +1025,15 @@ async function rollWeaponAttack(actor, weapon, options = {}) {
     usingThrown && !feats.has("boomerang")
       ? "<p><strong>Thrown:</strong> You need an action to retrieve this weapon.</p>"
       : "";
+  const sharpshooterText = sharpshooterAttack
+    ? "<p><strong>Sharpshooter:</strong> +1 damage with this ranged or thrown weapon. A natural 2 counts as a critical hit.</p>"
+    : "";
+  const cunningStrikeText = cunningStrikeAttack
+    ? `<p><strong>Cunning Strike:</strong> +1 damage with this small weapon${crit ? ", and this critical hit deals triple damage" : ""}.</p>`
+    : "";
+  const swordplayText = swordplayAttack || swordplayDamage
+    ? `<p><strong>Swordplay:</strong>${swordplayDamage ? " +1 damage with this finesse weapon." : ""}${swordplayAttack ? " A natural 2 counts as a critical hit with this melee weapon." : ""}</p>`
+    : "";
   const rotationBreakTarget = crit && actor.type === "champion" && targetToken?.actor?.type === "monster"
     ? targetToken.actor
     : null;
@@ -1027,6 +1073,9 @@ async function rollWeaponAttack(actor, weapon, options = {}) {
         ${disadvantageReason ? `<p>Rolled with Disadvantage from ${disadvantageReason}.</p>` : ""}
         ${boomerangReturnText}
         ${thrownText}
+        ${sharpshooterText}
+        ${cunningStrikeText}
+        ${swordplayText}
         ${
           hit
             ? `
@@ -1160,12 +1209,40 @@ async function setDefensiveStance(actor, value) {
   await actor.setFlag("twilight-sword", "defensiveStance", value);
 }
 
+function isDancerReactionEligible(actor) {
+  if (actor?.type !== "champion") return false;
+  if (!actorHasFeatNamed(actor, "dancer")) return false;
+
+  const armor = getEquippedArmor(actor);
+  const armorType = normalizeArmorTypeValue(armor?.system?.armorType || armor?.system?.type);
+
+  return armorType === "clothing";
+}
+
+function getReactionLimit(actor) {
+  return isDancerReactionEligible(actor) ? 2 : 1;
+}
+
+function getReactionUsedCount(actor) {
+  const value = actor.getFlag("twilight-sword", "reactionUsed");
+
+  if (typeof value === "number") return Math.max(Math.floor(value), 0);
+  if (value === true) return 1;
+
+  return 0;
+}
+
 function hasReactionUsed(actor) {
-  return actor.getFlag("twilight-sword", "reactionUsed") === true;
+  return getReactionUsedCount(actor) >= getReactionLimit(actor);
 }
 
 async function setReactionUsed(actor, value) {
-  await actor.setFlag("twilight-sword", "reactionUsed", value);
+  if (!value) {
+    await actor.setFlag("twilight-sword", "reactionUsed", 0);
+    return;
+  }
+
+  await actor.setFlag("twilight-sword", "reactionUsed", getReactionUsedCount(actor) + 1);
 }
 
 async function rollMonsterVariantReaction(actor, type) {
@@ -1220,7 +1297,7 @@ async function rollReaction(actor, type, options = {}) {
   if (!(await enforceCanReact(actor))) return;
 
   if (hasReactionUsed(actor)) {
-    ui.notifications.warn(`${actor.name} has already used their reaction this round.`);
+    ui.notifications.warn(`${actor.name} has already used their ${getReactionLimit(actor)} reaction(s) this round.`);
     return;
   }
 
@@ -1279,6 +1356,8 @@ async function rollReaction(actor, type, options = {}) {
   const adjustedTotal = Math.max(roll.total - bonus, 1);
   const target = Number(ability.value);
   const success = adjustedTotal <= target;
+  const reactionLimit = getReactionLimit(actor);
+  const dancerReaction = reactionLimit > 1;
 
   await setReactionUsed(actor, true);
   if (advantage) await setDefensiveStance(actor, false);
@@ -1291,6 +1370,7 @@ async function rollReaction(actor, type, options = {}) {
         <p><strong>${reason}</strong></p>
         <p><strong>Roll:</strong> ${roll.total}${bonus ? ` - ${bonus} Defensive = ${adjustedTotal}` : ""} vs ${ability.label} ${target}</p>
         <p><strong>Result:</strong> ${success ? "Avoids the attack" : "Fails"}</p>
+        ${dancerReaction ? `<p><strong>Dancer:</strong> May use up to ${reactionLimit} reactions this round while wearing Clothing.</p>` : ""}
         ${advantage ? "<p>Used Defensive Stance for Advantage.</p>" : ""}
         ${disadvantageReason ? `<p>Disadvantage from ${disadvantageReason}${advantage ? " was cancelled by Advantage." : "."}</p>` : ""}
       </div>
@@ -1402,13 +1482,16 @@ async function rollInitiativeForActor(actor) {
     return;
   }
 
-  const modifier = Number(actor.system.initiative?.modifier ?? actor.system.initiative ?? 0);
+  const rawBaseModifier = Number(actor.system.initiative?.modifier ?? actor.system.initiative ?? 0);
+  const baseModifier = Number.isFinite(rawBaseModifier) ? rawBaseModifier : 0;
+  const tempoModifier = actorHasFeatNamed(actor, "tempo") ? -1 : 0;
+  const modifier = baseModifier + tempoModifier;
   const combatants = await syncThreatCombatants(combat, actor, token);
   const rolls = [];
 
   for (let index = 0; index < combatants.length; index += 1) {
     const combatant = combatants[index];
-    const roll = await new Roll(`1d12 + ${modifier}`).evaluate();
+    const roll = await new Roll(`1d12 ${modifier < 0 ? "-" : "+"} ${Math.abs(modifier)}`).evaluate();
     rolls.push(roll);
 
     await combat.setInitiative(combatant.id, -roll.total);
@@ -1425,6 +1508,7 @@ async function rollInitiativeForActor(actor) {
       <div class="ts-chat-card">
         <h2>${actor.name} rolls Initiative</h2>
         ${actor.type === "monster" ? `<p><strong>Threat:</strong> ${combatants.length}</p>` : ""}
+        ${tempoModifier ? `<p><strong>Tempo:</strong> -1 to initiative rolls.</p>` : ""}
         ${rollLines}
         <p><em>Lower goes first.</em></p>
       </div>
@@ -1432,6 +1516,81 @@ async function rollInitiativeForActor(actor) {
   });
 
   ui.notifications.info(`${actor.name} rolled ${combatants.length} initiative ${combatants.length === 1 ? "turn" : "turns"}.`);
+}
+
+function getActorCombatant(combat, actor) {
+  return combat?.combatants?.find(combatant => combatant.actor?.id === actor?.id) || null;
+}
+
+function getFirstInitiativeValue(combat) {
+  const initiatives = Array.from(combat?.combatants || [])
+    .map(combatant => Number(combatant.initiative))
+    .filter(value => Number.isFinite(value));
+
+  return initiatives.length ? Math.max(...initiatives) + 1 : 0;
+}
+
+async function spendTempoInitiative(combat, actor) {
+  const combatant = getActorCombatant(combat, actor);
+  if (!combatant) return false;
+
+  const stamina = Number(actor.system.stamina?.value ?? 0);
+  if (stamina <= 0) {
+    ui.notifications.warn(`${actor.name} has no Stamina to spend on Tempo.`);
+    return false;
+  }
+
+  await actor.update({ "system.stamina.value": stamina - 1 });
+  await combat.setInitiative(combatant.id, getFirstInitiativeValue(combat));
+
+  const turnIndex = combat.turns.findIndex(turn => turn.id === combatant.id);
+  if (turnIndex >= 0) await combat.update({ turn: turnIndex });
+
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `
+      <div class="ts-chat-card">
+        <h2>${actor.name} uses Tempo</h2>
+        <p>Spent 1 Stamina to become first in initiative this Round.</p>
+      </div>
+    `
+  });
+
+  return true;
+}
+
+async function promptTempoAtRoundStart(combat) {
+  if (!game.user.isGM || !combat?.started) return;
+
+  const round = Number(combat.round || 0);
+  if (round <= 0) return;
+
+  if (combat.getFlag("twilight-sword", "tempoPromptRound") === round) return;
+  await combat.setFlag("twilight-sword", "tempoPromptRound", round);
+
+  const actors = [];
+  const seenActorIds = new Set();
+
+  for (const combatant of combat.combatants ?? []) {
+    const actor = combatant.actor;
+    if (!actor || actor.type !== "champion") continue;
+    if (seenActorIds.has(actor.id)) continue;
+    if (!actorHasFeatNamed(actor, "tempo")) continue;
+    if (getStatusIds(actor).has("ko")) continue;
+    if (Number(actor.system.stamina?.value ?? 0) <= 0) continue;
+
+    seenActorIds.add(actor.id);
+    actors.push(actor);
+  }
+
+  for (const actor of actors) {
+    const spend = await confirmDialog(
+      "Use Tempo?",
+      `${actor.name} has Tempo. Spend 1 Stamina to become first in initiative this Round?`
+    );
+
+    if (spend) await spendTempoInitiative(combat, actor);
+  }
 }
 
 function getTokenForActor(actor) {
@@ -1579,6 +1738,42 @@ function getItemQuantity(item) {
   const quantity = Math.floor(Number(item.system?.quantity ?? 1));
 
   return Number.isFinite(quantity) ? Math.max(quantity, 0) : 1;
+}
+
+function isLockpickItem(item) {
+  const name = normalizeItemName(item?.name || "");
+
+  return name === "lockpick" || name === "lock pick" || name.includes("lockpick");
+}
+
+function getConsumableItemUses(item) {
+  const uses = Number(item.system?.uses?.value);
+
+  return Number.isFinite(uses) ? Math.max(Math.floor(uses), 0) : null;
+}
+
+function getAvailableItemUnits(item) {
+  const uses = getConsumableItemUses(item);
+
+  return uses ?? getItemQuantity(item);
+}
+
+async function consumeItemUnit(actor, item) {
+  const uses = getConsumableItemUses(item);
+
+  if (uses !== null) {
+    await item.update({ "system.uses.value": Math.max(uses - 1, 0) });
+    return;
+  }
+
+  const quantity = getItemQuantity(item);
+  const nextQuantity = Math.max(quantity - 1, 0);
+
+  if (nextQuantity > 0) {
+    await item.update({ "system.quantity": nextQuantity });
+  } else {
+    await actor.deleteEmbeddedDocuments("Item", [item.id]);
+  }
 }
 
 function getItemSlotValue(item) {
@@ -1791,7 +1986,8 @@ function getItemTooltip(item) {
   const parts = [
     item?.system?.description,
     item?.system?.effect,
-    item?.system?.featDescription
+    item?.system?.featDescription,
+    item?.system?.startingEquipment
   ]
     .map(stripHtml)
     .filter(Boolean);
@@ -1823,6 +2019,75 @@ function isDuplicateKinFeat(actor, item) {
     : kinFeats;
 
   return matchingKinFeats.length > 1;
+}
+
+function normalizeItemName(value = "") {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function actorHasWay(actor, wayName) {
+  const requiredWay = normalizeItemName(wayName);
+  if (!requiredWay) return true;
+
+  return [actor.system?.way, actor.system?.way2]
+    .map(normalizeItemName)
+    .includes(requiredWay);
+}
+
+function canChooseFeatMultipleTimes(feat) {
+  const description = stripHtml(feat?.system?.description || "");
+
+  return description.includes("You can choose this feat multiple times");
+}
+
+async function addFeatToActor(actor, feat) {
+  if (!actorHasWay(actor, feat.system?.way)) {
+    ui.notifications.warn(`${actor.name} must have the ${feat.system?.way || "listed"} Way to take ${feat.name}.`);
+    return false;
+  }
+
+  if (!canChooseFeatMultipleTimes(feat)) {
+    const featName = normalizeItemName(feat.name);
+    const existing = actor.items.find(item =>
+      item.type === "feat" &&
+      normalizeItemName(item.name) === featName
+    );
+
+    if (existing) {
+      ui.notifications.warn(`${actor.name} already has ${feat.name}.`);
+      return false;
+    }
+  }
+
+  const data = feat.toObject ? feat.toObject() : foundry.utils.deepClone(feat);
+  delete data._id;
+  delete data.id;
+
+  await actor.createEmbeddedDocuments("Item", [data]);
+  return true;
+}
+
+async function applyWayToActor(actor, wayItem, slot = null) {
+  const normalizedSlot = Number(slot);
+  let field = normalizedSlot === 2 ? "system.way2" : normalizedSlot === 1 ? "system.way" : "";
+
+  if (!field) {
+    if (!actor.system?.way) field = "system.way";
+    else if (!actor.system?.way2) field = "system.way2";
+  }
+
+  if (!field) {
+    ui.notifications.warn(`${actor.name} already has two Ways. Drop ${wayItem.name} directly onto Way 1 or Way 2 to replace one.`);
+    return;
+  }
+
+  await actor.update({ [field]: wayItem.name });
+
+  const label = field === "system.way2" ? "Way 2" : "Way 1";
+  ui.notifications.info(`${actor.name} ${label} set to ${wayItem.name}.`);
 }
 
 function getArmorTypeLabel(type) {
@@ -1962,6 +2227,61 @@ function hasEquippedItemNamed(actor, name) {
   return getEquippedActorItems(actor).some(item =>
     String(item.name || "").trim().toLowerCase().includes(needle)
   );
+}
+
+function isInstrumentSongFeat(feat) {
+  if (feat?.type !== "feat") return false;
+
+  const name = String(feat.name || "").trim().toLowerCase();
+  const way = String(feat.system?.way || "").trim().toLowerCase();
+  const rulesText = stripHtml([
+    feat.system?.description,
+    feat.system?.effect,
+    feat.system?.featDescription
+  ].filter(Boolean).join(" "));
+  const knownInstrumentSongs = new Set(["battle song", "campfire song", "inspiring song"]);
+
+  if (knownInstrumentSongs.has(name)) return true;
+
+  return way.includes("song") &&
+    name.includes("song") &&
+    rulesText.toLowerCase().includes("musical instrument");
+}
+
+async function enforceCanUseFeat(actor, feat) {
+  if (!(await enforceCanAct(actor, "use feats"))) return false;
+
+  if (!isInstrumentSongFeat(feat)) return true;
+
+  if (await actorHasStatus(actor, "silence")) {
+    ui.notifications.warn(`${actor.name} is Silenced and cannot use ${feat.name}.`);
+    return false;
+  }
+
+  if (!hasEquippedItemNamed(actor, "musical instrument")) {
+    ui.notifications.warn(`${actor.name} needs an equipped Musical Instrument to use ${feat.name}.`);
+    return false;
+  }
+
+  return true;
+}
+
+async function useFeat(actor, feat) {
+  if (!(await enforceCanUseFeat(actor, feat))) return;
+
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `
+      <div class="ts-chat-card">
+        <h2>${escapeHtml(feat.name)}</h2>
+        <p><strong>Type:</strong> Feat</p>
+        ${feat.system?.way ? `<p><strong>Way:</strong> ${escapeHtml(feat.system.way)}</p>` : ""}
+        ${isInstrumentSongFeat(feat) ? `<p><strong>Song Requirement:</strong> Equipped Musical Instrument and not Silenced.</p>` : ""}
+        ${feat.system?.description ? `<p>${feat.system.description}</p>` : ""}
+        ${feat.system?.effect ? `<p><strong>Effect:</strong> ${feat.system.effect}</p>` : ""}
+      </div>
+    `
+  });
 }
 
 function getAbilityRollBonuses(actor, abilityKey, options = {}) {
@@ -2764,8 +3084,61 @@ function isRangedAttackInCloseRange(requiredRange, rangeInfo) {
 
 // Items / Spells
 
-async function useConsumable(actor, item) {
+async function useLockpick(actor, item) {
+  if (!(await enforceCanAct(actor, "use lockpicks"))) return;
   if (!(await enforceTurnActor(actor, "use items"))) return;
+
+  if (getAvailableItemUnits(item) <= 0) {
+    ui.notifications.warn(`${item.name} has none left.`);
+    return;
+  }
+
+  const result = await rollAbility(actor, "ste", { askStamina: true });
+  if (!result) return;
+
+  const hasThief = actorHasFeatNamed(actor, "thief");
+  const lockpickResultText = result.success
+    ? "Success. The lock opens and the lockpick is not consumed."
+    : hasThief
+      ? "Failure, but Thief prevents the lockpick from breaking."
+      : "Failure. Check whether the lockpick breaks.";
+  const thiefText = hasThief
+    ? "<p><strong>Thief:</strong> The lockpick does not risk breaking.</p>"
+    : "";
+  const breakButton = !result.success && !hasThief
+    ? `
+      <button
+        type="button"
+        class="ts-lockpick-break-check"
+        data-actor-id="${actor.id}"
+        data-item-id="${item.id}"
+      >
+        Roll again to see if the lockpick breaks
+      </button>
+    `
+    : "";
+
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({ actor }),
+    content: `
+      <div class="ts-chat-card">
+        <h2>${actor.name} uses ${item.name}</h2>
+        <p><strong>Stealth:</strong> ${lockpickResultText}</p>
+        ${thiefText}
+        ${breakButton}
+      </div>
+    `
+  });
+}
+
+async function useConsumable(actor, item) {
+  if (isLockpickItem(item)) {
+    await useLockpick(actor, item);
+    return;
+  }
+
+  if (!(await enforceTurnActor(actor, "use items"))) return;
+
   const effect = item.system.effect || "";
   const uses = Number(item.system.uses?.value ?? 1);
 
@@ -2795,6 +3168,7 @@ async function useConsumable(actor, item) {
 }
 
 const MAGIC_ITEM_SPELL_EXPENDED_FLAG = "magicSpellExpended";
+const PREPARED_SPELL_FLAG = "preparedSpell";
 
 function getMagicSpellKey(name) {
   return String(name || "")
@@ -3020,6 +3394,117 @@ async function refreshMagicItemSpells(actor) {
   }
 }
 
+function getKnownSpellItems(actor) {
+  return actor.items
+    .filter(item => item.type === "spell")
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function getPreparedSpellState(actor) {
+  const state = actor?.getFlag("twilight-sword", PREPARED_SPELL_FLAG);
+
+  return state && typeof state === "object" ? state : null;
+}
+
+function isPreparedSpellReady(actor, spell) {
+  if (!actorHasFeatNamed(actor, "prepared spell")) return false;
+
+  const state = getPreparedSpellState(actor);
+  if (!state || state.used) return false;
+
+  return state.spellId === spell.id;
+}
+
+function getPreparedSpellSummary(actor) {
+  if (!actorHasFeatNamed(actor, "prepared spell")) return null;
+
+  const state = getPreparedSpellState(actor);
+  if (!state?.spellId) return null;
+
+  const spell = actor.items.get(state.spellId);
+
+  return {
+    name: spell?.name || state.name || "Unknown Spell",
+    used: state.used === true
+  };
+}
+
+async function markPreparedSpellUsed(actor) {
+  const state = getPreparedSpellState(actor);
+  if (!state) return;
+
+  await actor.setFlag("twilight-sword", PREPARED_SPELL_FLAG, {
+    ...state,
+    used: true
+  });
+}
+
+async function choosePreparedSpell(actor) {
+  if (!actorHasFeatNamed(actor, "prepared spell")) {
+    await actor.unsetFlag("twilight-sword", PREPARED_SPELL_FLAG);
+    return null;
+  }
+
+  const knownSpells = getKnownSpellItems(actor);
+  if (!knownSpells.length) {
+    await actor.unsetFlag("twilight-sword", PREPARED_SPELL_FLAG);
+    return null;
+  }
+
+  const previousState = getPreparedSpellState(actor);
+  const options = knownSpells
+    .map(spell => `
+      <option value="${spell.id}" ${previousState?.spellId === spell.id ? "selected" : ""}>
+        ${escapeHtml(spell.name)}
+      </option>
+    `)
+    .join("");
+
+  const spellId = await new Promise(resolve => {
+    new Dialog({
+      title: "Prepare Spell",
+      content: `
+        <form>
+          <p><strong>Prepared Spell:</strong> Choose one spell you know. The first time you cast it after this rest, it does not become expended.</p>
+          <select name="spellId">
+            ${options}
+            <option value="">Do not prepare a spell</option>
+          </select>
+        </form>
+      `,
+      buttons: {
+        prepare: {
+          label: "Prepare",
+          callback: html => resolve(html[0].querySelector("[name='spellId']").value)
+        },
+        skip: {
+          label: "Skip",
+          callback: () => resolve("")
+        }
+      },
+      default: "prepare",
+      close: () => resolve("")
+    }).render(true);
+  });
+
+  if (!spellId) {
+    await actor.unsetFlag("twilight-sword", PREPARED_SPELL_FLAG);
+    return null;
+  }
+
+  const spell = knownSpells.find(item => item.id === spellId);
+  if (!spell) return null;
+
+  await actor.setFlag("twilight-sword", PREPARED_SPELL_FLAG, {
+    spellId: spell.id,
+    name: spell.name,
+    used: false
+  });
+  await spell.update({ "system.expended": false });
+
+  return spell;
+}
+
 async function chooseShortRestSpellRecharge(actor) {
   const expendedSpells = getActorSpellList(actor).filter(item =>
     item.type === "spell" &&
@@ -3109,6 +3594,7 @@ async function castSpell(actor, spell) {
   const stamina = Number(actor.system.stamina?.value ?? 0);
   const maxStamina = Number(actor.system.stamina?.max ?? stamina);
   const expended = Boolean(spell.system.expended);
+  const preparedSpellReady = !isMagicItemSpell && isPreparedSpellReady(actor, spell);
   let spentStaminaToCast = false;
 
   if (isMagicItemSpell) {
@@ -3121,7 +3607,7 @@ async function castSpell(actor, spell) {
       "system.stamina.value": stamina - 1
     });
     spentStaminaToCast = true;
-  } else if (expended) {
+  } else if (expended && !preparedSpellReady) {
     if (stamina <= 0) {
       ui.notifications.warn(`${spell.name} is expended and ${actor.name} has no Stamina to cast it again.`);
       return;
@@ -3168,6 +3654,10 @@ async function castSpell(actor, spell) {
     }
   }
 
+  if (preparedSpellReady) {
+    await markPreparedSpellUsed(actor);
+  }
+
   if (spellCriticalSuccess) {
     if (!expended) await spell.update({ "system.expended": false });
 
@@ -3177,7 +3667,7 @@ async function castSpell(actor, spell) {
         "system.stamina.value": Math.min(currentStamina + 1, maxStamina)
       });
     }
-  } else if (!isMagicItemSpell) {
+  } else if (!isMagicItemSpell && !preparedSpellReady) {
     await spell.update({ "system.expended": true });
   }
 
@@ -3286,6 +3776,7 @@ async function castSpell(actor, spell) {
         <p><strong>Range:</strong> ${spell.system.range || "—"}</p>
         ${rangeInfo ? `<p><strong>Target Distance:</strong> ${rangeInfo.label}</p>` : ""}
         ${isMagicItemSpell ? `<p><strong>Magic Item:</strong> ${spellCriticalSuccess ? "Stamina refunded by Critical Spell." : "Spent 1 Stamina to cast through the item."}</p>` : ""}
+        ${preparedSpellReady ? `<p><strong>Prepared Spell:</strong> First prepared cast does not expend this spell.</p>` : ""}
         ${!isMagicItemSpell && spentStaminaToCast ? `<p><strong>Expended Spell:</strong> ${spellCriticalSuccess ? "Stamina refunded by Critical Spell." : "Spent 1 Stamina to cast again."}</p>` : ""}
         ${healingButton}
         ${spell.system.damage && !["heal", "healing prayer", "life"].includes(spellName)
@@ -3703,6 +4194,8 @@ class TwilightSwordChampionSheet extends ActorSheet {
     context.armorElementalTraits = getArmorElementalTraitSummary(this.actor);
     context.castingRestrictions = getCastingRestrictionSummary(this.actor);
     context.activeSpells = getActiveSpells(this.actor);
+    context.preparedSpell = getPreparedSpellSummary(this.actor);
+    context.boonActive = system.boon === true || system.boon === "true";
 
     return context;
   }
@@ -3836,18 +4329,7 @@ class TwilightSwordChampionSheet extends ActorSheet {
           return;
         }
 
-        await ChatMessage.create({
-          speaker: ChatMessage.getSpeaker({ actor: this.actor }),
-          content: `
-            <div class="ts-chat-card">
-              <h2>${feat.name}</h2>
-              <p><strong>Type:</strong> Feat</p>
-              ${feat.system.way ? `<p><strong>Way:</strong> ${feat.system.way}</p>` : ""}
-              ${feat.system.description ? `<p>${feat.system.description}</p>` : ""}
-              ${feat.system.effect ? `<p><strong>Effect:</strong> ${feat.system.effect}</p>` : ""}
-            </div>
-          `
-        });
+        await useFeat(this.actor, feat);
       });
 
       html.find(".item-edit").click(async event => {
@@ -3962,6 +4444,11 @@ class TwilightSwordChampionSheet extends ActorSheet {
     html.find(".status-toggle").click(async event => {
       await toggleActorStatus(this.actor, event.currentTarget.dataset.statusId);
     });
+
+    html.find(".boon-toggle").click(async event => {
+      event.preventDefault();
+      await toggleActorBoon(this.actor);
+    });
   }
 
 async _onDrop(event) {
@@ -3972,6 +4459,16 @@ async _onDrop(event) {
 
   if (!item) return super._onDrop(event);
 
+  if (item.type === "feat") {
+    await addFeatToActor(this.actor, item);
+    return false;
+  }
+
+  if (item.type === "way") {
+    const slot = event.target.closest("[data-way-slot]")?.dataset.waySlot;
+    await applyWayToActor(this.actor, item, slot);
+    return false;
+  }
 
   if (item.type !== "kin") {
     return super._onDrop(event);
@@ -4034,6 +4531,7 @@ async _onDrop(event) {
   await cleanupRestStatuses(this.actor);
 
   const rechargedSpell = await chooseShortRestSpellRecharge(this.actor);
+  const preparedSpell = await choosePreparedSpell(this.actor);
 
   await ChatMessage.create({
     speaker: ChatMessage.getSpeaker({ actor: this.actor }),
@@ -4042,6 +4540,7 @@ async _onDrop(event) {
         <h2>${this.actor.name} takes a Short Rest</h2>
         <p>Recovered Stamina and 3 Hearts.</p>
         ${rechargedSpell ? `<p>Recharged <strong>${escapeHtml(rechargedSpell.name)}</strong>.</p>` : ""}
+        ${preparedSpell ? `<p>Prepared <strong>${escapeHtml(preparedSpell.name)}</strong>.</p>` : ""}
         <p>Temporary status effects were cleared. Wounds remain.</p>
       </div>
     `
@@ -4065,6 +4564,7 @@ async _onDrop(event) {
   }
 
   await refreshMagicItemSpells(this.actor);
+  const preparedSpell = await choosePreparedSpell(this.actor);
 
   await ChatMessage.create({
     speaker: ChatMessage.getSpeaker({ actor: this.actor }),
@@ -4072,6 +4572,7 @@ async _onDrop(event) {
       <div class="ts-chat-card">
         <h2>${this.actor.name} takes a Rest</h2>
         <p>Recovered Hearts, Stamina, and refreshed spells.</p>
+        ${preparedSpell ? `<p>Prepared <strong>${escapeHtml(preparedSpell.name)}</strong>.</p>` : ""}
         <p>Temporary status effects were cleared. Wounds remain.</p>
       </div>
     `
@@ -4296,6 +4797,7 @@ class TwilightSwordItemSheet extends ItemSheet {
     context.isSpell = this.item.type === "spell";
     context.isFeat = this.item.type === "feat";
     context.isKin = this.item.type === "kin";
+    context.isWay = this.item.type === "way";
     context.isGear = ["gear", "consumable"].includes(this.item.type);
     context.isPurchasable = isPurchasableItem(this.item);
     context.armorType = normalizeArmorTypeValue(this.item.system?.armorType);
@@ -4318,7 +4820,8 @@ class TwilightSwordItemSheet extends ItemSheet {
         return;
       }
 
-      if (item.type === "consumable") await useConsumable(actor, item);
+      if (item.type === "consumable" || (item.type === "gear" && isLockpickItem(item))) await useConsumable(actor, item);
+      if (item.type === "feat") await useFeat(actor, item);
       if (item.type === "spell") await castSpell(actor, item);
       if (item.type === "weapon") await rollWeaponAttack(actor, item);
     });
@@ -4490,7 +4993,7 @@ Hooks.on("renderCombatTracker", (app, html) => {
   });
 
   Items.registerSheet("twilight-sword", TwilightSwordItemSheet, {
-    types: ["weapon", "armor", "feat", "spell", "consumable", "gear", "kin"],
+    types: ["weapon", "armor", "feat", "spell", "consumable", "gear", "kin", "way"],
     makeDefault: true,
     label: "Twilight Sword Item"
   });
@@ -4571,6 +5074,8 @@ Hooks.on("updateCombat", async (combat, changed) => {
       resetMonsterIds.add(actor.id);
       await setReactionUsed(actor, false);
     }
+
+    await promptTempoAtRoundStart(combat);
   }
 
   if (!("turn" in changed)) return;
@@ -4632,6 +5137,51 @@ Hooks.on("renderChatMessage", (message, html) => {
 
     const rangedAttack = event.currentTarget.dataset.rangedAttack === "true";
     await rollReaction(token.actor, "parry", { rangedAttack });
+  });
+
+  html.find(".ts-lockpick-break-check").click(async event => {
+    event.preventDefault();
+
+    if (message.getFlag("twilight-sword", "lockpickBreakChecked")) {
+      ui.notifications.warn("This lockpick break check has already been rolled.");
+      return;
+    }
+
+    const actor = game.actors.get(event.currentTarget.dataset.actorId || message.speaker.actor);
+    if (!actor) {
+      ui.notifications.warn("Could not find lockpick user.");
+      return;
+    }
+
+    const item = actor.items.get(event.currentTarget.dataset.itemId);
+    if (!item || getAvailableItemUnits(item) <= 0) {
+      ui.notifications.warn("Could not find an available lockpick.");
+      return;
+    }
+
+    if (actorHasFeatNamed(actor, "thief")) {
+      ui.notifications.info(`${actor.name}'s Thief feat prevents the lockpick from breaking.`);
+      return;
+    }
+
+    await message.setFlag("twilight-sword", "lockpickBreakChecked", true);
+
+    const result = await rollAbility(actor, "ste");
+    if (!result) return;
+
+    if (!result.success) {
+      await consumeItemUnit(actor, item);
+    }
+
+    await ChatMessage.create({
+      speaker: ChatMessage.getSpeaker({ actor }),
+      content: `
+        <div class="ts-chat-card">
+          <h2>${item.name} Break Check</h2>
+          <p><strong>Stealth:</strong> ${result.success ? "Success. The lockpick holds." : "Failure. The lockpick breaks and is consumed."}</p>
+        </div>
+      `
+    });
   });
 
   html.find(".ts-apply-damage").click(async event => {

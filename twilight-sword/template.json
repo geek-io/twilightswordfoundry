@@ -50,6 +50,7 @@
       "origin": "",
       "kin": "",
       "way": "",
+      "way2": "",
       "hope": {
         "value": 1
       },
@@ -81,7 +82,7 @@
     }
   },
   "Item": {
-    "types": ["weapon", "armor", "feat", "spell", "consumable", "gear"],
+    "types": ["weapon", "armor", "feat", "spell", "consumable", "gear", "kin", "way"],
     "templates": {
       "base": {
         "description": "",
@@ -117,8 +118,7 @@
     "feat": {
       "templates": ["base"],
       "way": "",
-      "cost": 0,
-      "passive": true
+      "cost": 0
     },
     "spell": {
       "templates": ["base"],
@@ -146,6 +146,16 @@
       "templates": ["base"],
       "slot": 1,
       "equipped": false
+    },
+    "kin": {
+      "templates": ["base"],
+      "featName": "",
+      "featDescription": "",
+      "effect": ""
+    },
+    "way": {
+      "templates": ["base"],
+      "startingEquipment": ""
     }
   }
 }

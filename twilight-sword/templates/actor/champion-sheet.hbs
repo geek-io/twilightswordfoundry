@@ -7,7 +7,7 @@
         <input name="name" type="text" value="{{actor.name}}" placeholder="Champion Name" />
       </h1>
 
-      <div class="grid grid-3">
+      <div class="grid grid-4">
         <label>Origin <input name="system.origin" type="text" value="{{system.origin}}" /></label>
         <label>
           Kin
@@ -19,7 +19,28 @@
             placeholder="Drag Kin item here"
           />
         </label>
-        <label>Way <input name="system.way" type="text" value="{{system.way}}" /></label>
+        <label>
+          Way 1
+          <input
+            name="system.way"
+            type="text"
+            value="{{system.way}}"
+            readonly
+            data-way-slot="1"
+            placeholder="Drag Way item here"
+          />
+        </label>
+        <label>
+          Way 2
+          <input
+            name="system.way2"
+            type="text"
+            value="{{system.way2}}"
+            readonly
+            data-way-slot="2"
+            placeholder="Drag Way item here"
+          />
+        </label>
       </div>
     </div>
   </header>
@@ -71,6 +92,18 @@
     <div>
       <h3>Hope</h3>
       <input name="system.hope.value" type="number" value="{{system.hope.value}}" />
+    </div>
+
+    <div class="boon-resource">
+      <h3>Boon</h3>
+      <button
+        type="button"
+        class="boon-toggle {{#if boonActive}}active{{/if}}"
+        title="Boon: score a critical success, save a Champion about to go K.O. and recover 1D12 Hearts, or recover all Stamina. Each Champion can only use 1 Boon per Session."
+      >
+        <span class="boon-icon">B</span>
+        <span>{{#if boonActive}}Ready{{else}}None{{/if}}</span>
+      </button>
     </div>
 
     <div class="inventory-resource {{#if inventory.encumbered}}over-limit{{/if}}">
@@ -359,6 +392,12 @@
       </section>
 
       <h2>Spells</h2>
+      {{#if preparedSpell}}
+        <p class="prepared-spell-summary">
+          <strong>Prepared Spell:</strong> {{preparedSpell.name}}
+          ({{#if preparedSpell.used}}used{{else}}unused{{/if}})
+        </p>
+      {{/if}}
 
       <ol class="items-list">
         {{#each spells as |item|}}

@@ -14,17 +14,25 @@
   </header>
 
   <section class="zelda-panel">
-    <button type="button" class="use-item">Use / Cast</button>
+    {{#unless isKin}}
+      {{#unless isWay}}
+        <button type="button" class="use-item">Use / Cast</button>
+      {{/unless}}
+    {{/unless}}
     {{#if isPurchasable}}
       <button type="button" class="buy-item">Buy</button>
     {{/if}}
 
     {{#unless isSpell}}
       {{#unless isKin}}
-      <label>
-        Quantity
-        <input name="system.quantity" type="number" min="0" value="{{system.quantity}}" />
-      </label>
+        {{#unless isWay}}
+          {{#unless isFeat}}
+          <label>
+            Quantity
+            <input name="system.quantity" type="number" min="0" value="{{system.quantity}}" />
+          </label>
+          {{/unless}}
+        {{/unless}}
       {{/unless}}
     {{/unless}}
 
@@ -228,14 +236,6 @@
 
       <label>Way</label>
       <input name="system.way" type="text" value="{{system.way}}" />
-
-      <label>Cost</label>
-      <input name="system.cost" type="number" value="{{system.cost}}" />
-
-      <label>
-        <input name="system.passive" type="checkbox" {{checked system.passive}} />
-        Passive
-      </label>
     {{/if}}
 
     {{#if isKin}}
@@ -267,5 +267,10 @@
 
     <h2>Description</h2>
     <textarea name="system.description">{{system.description}}</textarea>
+
+    {{#if isWay}}
+      <h2>Starting Equipment</h2>
+      <textarea name="system.startingEquipment">{{system.startingEquipment}}</textarea>
+    {{/if}}
   </section>
 </form>

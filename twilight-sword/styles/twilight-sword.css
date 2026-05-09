@@ -147,17 +147,54 @@
 
 .twilight-sword .grid-2 { grid-template-columns: repeat(2, 1fr); }
 .twilight-sword .grid-3 { grid-template-columns: repeat(3, 1fr); }
+.twilight-sword .grid-4 { grid-template-columns: repeat(4, 1fr); }
 .twilight-sword .grid-5 { grid-template-columns: repeat(5, 1fr); }
 
 .twilight-sword .resources {
   display: grid;
-  grid-template-columns: 2fr 2fr 1fr 1fr 1.4fr;
+  grid-template-columns: 2fr 2fr 1fr 1fr 1fr 1.4fr;
   gap: 12px;
   margin-bottom: 10px;
 }
 
 .twilight-sword .resources input {
   width: 48px;
+}
+
+.twilight-sword .boon-toggle {
+  width: 100%;
+  min-height: 54px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: linear-gradient(180deg, #f2dfb0, #b89a52);
+  color: #4d3b13;
+  border-color: #8a6517;
+  opacity: 0.68;
+}
+
+.twilight-sword .boon-toggle.active {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(255,255,255,.95), transparent 34%),
+    linear-gradient(180deg, #fff6a8, #d4af37 60%, #8d6116);
+  color: #063636;
+  opacity: 1;
+  box-shadow: 0 0 12px rgba(212, 175, 55, 0.9), inset 0 0 0 2px rgba(255,255,255,.45);
+}
+
+.twilight-sword .boon-icon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .twilight-sword .monster-vitals {
@@ -616,7 +653,9 @@
   letter-spacing: 1px;
 }
 
-input[name="system.kin"][readonly] {
+input[name="system.kin"][readonly],
+input[name="system.way"][readonly],
+input[name="system.way2"][readonly] {
   opacity: 0.8;
   cursor: not-allowed;
   background: rgba(0, 0, 0, 0.15);
