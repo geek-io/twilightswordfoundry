@@ -44,5 +44,102 @@
       "kin": {},
       "way": {}
     }
-  }
+  },
+  "packs": [
+    {
+      "name": "champions",
+      "label": "Twilight Sword Champions",
+      "type": "Actor",
+      "system": "twilight-sword",
+      "path": "packs/champions"
+    },
+    {
+      "name": "monsters",
+      "label": "Twilight Sword Monsters",
+      "type": "Actor",
+      "system": "twilight-sword",
+      "path": "packs/monsters"
+    },
+    {
+      "name": "npcs",
+      "label": "Twilight Sword NPCs",
+      "type": "Actor",
+      "system": "twilight-sword",
+      "path": "packs/npcs"
+    },
+    {
+      "name": "weapons",
+      "label": "Twilight Sword Weapons",
+      "type": "Item",
+      "system": "twilight-sword",
+      "path": "packs/weapons"
+    },
+    {
+      "name": "armor",
+      "label": "Twilight Sword Armor",
+      "type": "Item",
+      "system": "twilight-sword",
+      "path": "packs/armor"
+    },
+    {
+      "name": "gear",
+      "label": "Twilight Sword Gear",
+      "type": "Item",
+      "system": "twilight-sword",
+      "path": "packs/gear"
+    },
+    {
+      "name": "consumables",
+      "label": "Twilight Sword Consumables",
+      "type": "Item",
+      "system": "twilight-sword",
+      "path": "packs/consumables"
+    },
+    {
+      "name": "spells",
+      "label": "Twilight Sword Spells",
+      "type": "Item",
+      "system": "twilight-sword",
+      "path": "packs/spells"
+    },
+    {
+      "name": "feats",
+      "label": "Twilight Sword Feats",
+      "type": "Item",
+      "system": "twilight-sword",
+      "path": "packs/feats"
+    },
+    {
+      "name": "kin",
+      "label": "Twilight Sword Kin",
+      "type": "Item",
+      "system": "twilight-sword",
+      "path": "packs/kin"
+    },
+    {
+      "name": "ways",
+      "label": "Twilight Sword Ways",
+      "type": "Item",
+      "system": "twilight-sword",
+      "path": "packs/ways"
+    },
+    {
+      "name": "journals",
+      "label": "Twilight Sword Journals",
+      "type": "JournalEntry",
+      "path": "packs/journals"
+    },
+    {
+      "name": "tables",
+      "label": "Twilight Sword Roll Tables",
+      "type": "RollTable",
+      "path": "packs/tables"
+    },
+    {
+      "name": "macros",
+      "label": "Twilight Sword Macros",
+      "type": "Macro",
+      "path": "packs/macros"
+    }
+  ]
 }

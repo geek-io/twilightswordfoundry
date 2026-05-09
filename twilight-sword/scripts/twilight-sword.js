@@ -31,6 +31,189 @@ async function confirmDialog(title, content) {
   });
 }
 
+function getRawHtmlElement(html) {
+  if (html instanceof HTMLElement) return html;
+  if (html?.[0] instanceof HTMLElement) return html[0];
+  return null;
+}
+
+function getCompendiumFolderIdFromClick(target) {
+  return target.closest("[data-folder-id]")?.dataset.folderId || null;
+}
+
+function getDialogForm(root, selector) {
+  if (root instanceof HTMLFormElement) return root;
+  if (root instanceof HTMLElement) return root.querySelector(selector);
+  if (root?.[0] instanceof HTMLElement) return root[0].querySelector(selector);
+  return null;
+}
+
+async function createWorldCompendiumFromDialog(event, folderId = null) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!game.user.isGM) {
+    ui.notifications.warn("Only a GM can create compendiums.");
+    return null;
+  }
+
+  const types = CONST.COMPENDIUM_DOCUMENT_TYPES.reduce((types, documentName) => {
+    types[documentName] = game.i18n.localize(getDocumentClass(documentName).metadata.label);
+    return types;
+  }, {});
+  const html = await renderTemplate("templates/sidebar/compendium-create.html", { types });
+
+  return Dialog.prompt({
+    title: game.i18n.localize("COMPENDIUM.Create"),
+    content: html,
+    label: game.i18n.localize("COMPENDIUM.Create"),
+    callback: async dialogHtml => {
+      const form = getDialogForm(dialogHtml, "#compendium-create");
+      const fd = new FormDataExtended(form);
+      const metadata = fd.object;
+
+      if (!metadata.label) {
+        let defaultName = game.i18n.format("DOCUMENT.New", {
+          type: game.i18n.localize("PACKAGE.TagCompendium")
+        });
+        const count = game.packs.size;
+        if (count > 0) defaultName += ` (${count + 1})`;
+        metadata.label = defaultName;
+      }
+
+      if (["Actor", "Item"].includes(metadata.type)) {
+        metadata.system = game.system.id;
+      }
+
+      const pack = await CompendiumCollection.createCompendium(metadata);
+
+      if (folderId && game.CF?.CompendiumFolder?.collection) {
+        const folder = game.CF.CompendiumFolder.collection.get(folderId);
+        if (folder?.addCompendium) await folder.addCompendium(pack.collection);
+      }
+
+      ui.compendium?.render(true);
+      return pack;
+    },
+    rejectClose: false,
+    options: { jQuery: false }
+  });
+}
+
+async function createCompendiumFolderFromDialog(event, parentFolderId = null) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!game.user.isGM) {
+    ui.notifications.warn("Only a GM can create compendium folders.");
+    return null;
+  }
+
+  if (!game.CF?.CompendiumFolder) {
+    ui.notifications.warn("Compendium folders require the Compendium Folders module.");
+    return null;
+  }
+
+  return Dialog.prompt({
+    title: game.i18n.localize("FOLDER.Create"),
+    content: `
+      <form class="twilight-compendium-folder-create">
+        <div class="form-group">
+          <label>${game.i18n.localize("Name")}</label>
+          <input type="text" name="name" placeholder="${game.i18n.localize("FOLDER.Create")}" autofocus>
+        </div>
+      </form>
+    `,
+    label: game.i18n.localize("FOLDER.Create"),
+    callback: async dialogHtml => {
+      const form = getDialogForm(dialogHtml, "form");
+      const fd = new FormDataExtended(form);
+      const folderName = String(fd.object.name || "").trim() || game.i18n.localize("FOLDER.Create");
+      const parentFolder = parentFolderId
+        ? game.CF.CompendiumFolder.collection?.get(parentFolderId)
+        : null;
+      const data = {
+        titleText: folderName,
+        parent: parentFolder?.id || null,
+        pathToFolder: parentFolder ? parentFolder.path.concat(parentFolder.id) : []
+      };
+      const folder = game.CF.CompendiumFolder.create(data);
+
+      await folder.save(true);
+      ui.compendium?.render(true);
+      return folder;
+    },
+    rejectClose: false,
+    options: { jQuery: false }
+  });
+}
+
+function installCompendiumCreationFallbacks() {
+  document.addEventListener("click", event => {
+    const createCompendiumButton = event.target.closest(
+      "#compendium .create-compendium, #compendium .create-entity-c"
+    );
+
+    if (createCompendiumButton) {
+      event.stopImmediatePropagation();
+      createWorldCompendiumFromDialog(event, getCompendiumFolderIdFromClick(createCompendiumButton));
+      return;
+    }
+
+    const createFolderButton = event.target.closest("#compendium .create-folder");
+
+    if (createFolderButton) {
+      event.stopImmediatePropagation();
+      createCompendiumFolderFromDialog(event, getCompendiumFolderIdFromClick(createFolderButton));
+    }
+  }, true);
+}
+
+function addCompendiumPackCreationControls(app, html) {
+  if (!game.user.isGM || !app.collection || app.collection.locked) return;
+
+  const root = getRawHtmlElement(html);
+  const wrapper = root?.querySelector(".compendium.directory");
+  if (!wrapper || wrapper.querySelector(".twilight-compendium-controls")) return;
+
+  let footer = wrapper.querySelector(".directory-footer");
+  if (!footer) {
+    footer = document.createElement("footer");
+    footer.classList.add("directory-footer", "flexrow");
+    wrapper.appendChild(footer);
+  }
+
+  const controls = document.createElement("div");
+  controls.classList.add("twilight-compendium-controls", "flexrow");
+  controls.innerHTML = `
+    <button type="button" class="twilight-compendium-create-entry">
+      <i class="fas fa-plus"></i> Create Entry
+    </button>
+  `;
+
+  controls.querySelector(".twilight-compendium-create-entry").addEventListener("click", async event => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const cls = app.collection.documentClass;
+    if (!cls?.createDialog) {
+      ui.notifications.warn("This compendium type cannot create entries directly.");
+      return;
+    }
+
+    await cls.createDialog({}, {
+      pack: app.collection.collection,
+      top: event.currentTarget.offsetTop,
+      left: window.innerWidth - 630,
+      width: 320
+    });
+
+    app.collection.render(false);
+  });
+
+  footer.prepend(controls);
+}
+
 
 // Status Helpers 
 
@@ -4899,6 +5082,7 @@ Hooks.once("init", function () {
 });
 
 Hooks.once("ready", function () {
+  installCompendiumCreationFallbacks();
 
   Combat.prototype.rollInitiative = async function (ids, options = {}) {
     ids = typeof ids === "string" ? [ids] : ids;
@@ -5095,6 +5279,10 @@ Hooks.on("updateCombat", async (combat, changed) => {
   if (!actor) return;
 
   await processStartOfTurnStatuses(actor);
+});
+
+Hooks.on("renderCompendium", (app, html) => {
+  addCompendiumPackCreationControls(app, html);
 });
 
 Hooks.on("renderChatMessage", (message, html) => {
