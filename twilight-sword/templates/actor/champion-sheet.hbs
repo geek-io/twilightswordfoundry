@@ -60,6 +60,10 @@
       <input name="system.hearts.value" type="number" value="{{system.hearts.value}}" />
       /
       <input name="system.hearts.max" type="number" value="{{system.hearts.max}}" />
+      <label>
+        Bonus
+        <input name="system.hearts.bonus" type="number" value="{{system.hearts.bonus}}" />
+      </label>
     </div>
 
     <div>
@@ -511,7 +515,13 @@
         </div>
       </section>
 
-      <h2>Gear</h2>
+      <div class="section-heading">
+        <h2>Gear</h2>
+
+        <button type="button" class="create-inventory-item">
+          + Create Item
+        </button>
+      </div>
 
       <ol class="items-list">
         {{#each gear as |item|}}

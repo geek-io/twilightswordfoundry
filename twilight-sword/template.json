@@ -19,7 +19,8 @@
         },
         "hearts": {
           "value": 17,
-          "max": 17
+          "max": 17,
+          "bonus": 0
         },
         "stamina": {
           "value": 3,

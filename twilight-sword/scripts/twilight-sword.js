@@ -3526,6 +3526,47 @@ async function deleteOwnedItemFromSheet(actor, item) {
   await actor.deleteEmbeddedDocuments("Item", [item.id]);
 }
 
+async function createOwnedInventoryItem(actor) {
+  if (!actor) return null;
+
+  return Dialog.prompt({
+    title: `Create Item for ${actor.name}`,
+    content: `
+      <form class="twilight-create-owned-item">
+        <div class="form-group">
+          <label>Name</label>
+          <input type="text" name="name" placeholder="New Item" autofocus>
+        </div>
+        <div class="form-group">
+          <label>Type</label>
+          <select name="type">
+            <option value="gear" selected>Gear</option>
+            <option value="consumable">Consumable</option>
+            <option value="weapon">Weapon</option>
+            <option value="armor">Armor</option>
+          </select>
+        </div>
+      </form>
+    `,
+    label: "Create Item",
+    callback: async html => {
+      const form = getDialogForm(html, "form");
+      const fd = new FormDataExtended(form);
+      const type = ["gear", "consumable", "weapon", "armor"].includes(fd.object.type)
+        ? fd.object.type
+        : "gear";
+      const name = String(fd.object.name || "").trim() || "New Item";
+      const created = await actor.createEmbeddedDocuments("Item", [{ name, type }]);
+      const item = created[0];
+
+      item?.sheet?.render(true);
+      return item || null;
+    },
+    rejectClose: false,
+    options: { jQuery: false, width: 360 }
+  });
+}
+
 async function showItemRowContextMenu(actor, row) {
   const item = getSheetItemFromRow(actor, row);
   const ownedItem = actor.items.get(row?.dataset.itemId);
@@ -4530,6 +4571,12 @@ class TwilightSwordChampionSheet extends ActorSheet {
         await deleteOwnedItemFromSheet(this.actor, item);
       });
 
+      html.find(".create-inventory-item").click(async event => {
+        event.preventDefault();
+
+        await createOwnedInventoryItem(this.actor);
+      });
+
       html.find(".zelda-item").dblclick(async event => {
         event.preventDefault();
 
@@ -5189,9 +5236,16 @@ Hooks.on("preUpdateActor", async (actor, changes) => {
   if (actor.type !== "champion") return;
 
   const vit = foundry.utils.getProperty(changes, "system.abilities.vit.value");
+  const heartsBonus = foundry.utils.getProperty(changes, "system.hearts.bonus");
 
-  if (vit !== undefined) {
-    const newMax = 10 + Number(vit);
+  if (vit !== undefined || heartsBonus !== undefined) {
+    const nextVit = vit !== undefined
+      ? Number(vit)
+      : Number(actor.system.abilities?.vit?.value ?? 0);
+    const nextBonus = heartsBonus !== undefined
+      ? Number(heartsBonus)
+      : Number(actor.system.hearts?.bonus ?? 0);
+    const newMax = 10 + nextVit + nextBonus;
 
     foundry.utils.setProperty(changes, "system.hearts.max", newMax);
 
