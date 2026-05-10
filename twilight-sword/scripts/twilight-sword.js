@@ -10,7 +10,7 @@ function buildPips(value, max, type) {
   max = Number(max ?? 0);
 
   for (let i = 1; i <= max; i++) {
-    pips.push({ filled: i <= value, type });
+    pips.push({ filled: i <= value, type, value: i });
   }
 
   return pips;
@@ -481,6 +481,56 @@ async function healActor(actor, amount) {
   if (newValue > 0) {
     await removeStatus(actor, "ko");
   }
+}
+
+async function setActorResourceFromPip(actor, resource, pipValue) {
+  if (!["hearts", "stamina"].includes(resource)) return;
+
+  const value = Math.max(Number(pipValue || 0), 0);
+  const current = Number(actor.system?.[resource]?.value ?? 0);
+  const max = Math.max(Number(actor.system?.[resource]?.max ?? value), value);
+  const nextValue = current >= value
+    ? Math.max(value - 1, 0)
+    : value;
+
+  await actor.update({
+    [`system.${resource}.value`]: Math.min(nextValue, max)
+  });
+}
+
+function activateResourcePipListeners(actor, html) {
+  html.find(".resource-pip").click(async event => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    await setActorResourceFromPip(
+      actor,
+      event.currentTarget.dataset.resource,
+      event.currentTarget.dataset.value
+    );
+  });
+}
+
+function activateActorStatTabOrder(html) {
+  const root = getRawHtmlElement(html);
+  if (!root) return;
+
+  root.querySelectorAll(".resource-pip").forEach(pip => {
+    pip.tabIndex = -1;
+  });
+
+  const statFields = root.querySelectorAll([
+    ".sheet-header input:not([type='hidden']):not([readonly]):not([disabled])",
+    ".sheet-header select:not([disabled])",
+    ".resources input:not([type='hidden']):not([readonly]):not([disabled])",
+    ".monster-vitals input:not([type='hidden']):not([readonly]):not([disabled])",
+    ".monster-vitals select:not([disabled])",
+    ".abilities input:not([type='hidden']):not([readonly]):not([disabled])"
+  ].join(", "));
+
+  statFields.forEach((field, index) => {
+    field.tabIndex = index + 1;
+  });
 }
 
 async function applyHealingToTarget(amount, reason = "Healing") {
@@ -1929,6 +1979,14 @@ function isLockpickItem(item) {
   return name === "lockpick" || name === "lock pick" || name.includes("lockpick");
 }
 
+function getResourceStoneType(item) {
+  const name = normalizeItemName(item?.name || "");
+
+  if (name === "heart stone") return "hearts";
+  if (name === "stamina stone") return "stamina";
+  return "";
+}
+
 function getConsumableItemUses(item) {
   const uses = Number(item.system?.uses?.value);
 
@@ -2227,7 +2285,7 @@ function canChooseFeatMultipleTimes(feat) {
 }
 
 async function addFeatToActor(actor, feat) {
-  if (!actorHasWay(actor, feat.system?.way)) {
+  if (actor.type !== "npc" && !actorHasWay(actor, feat.system?.way)) {
     ui.notifications.warn(`${actor.name} must have the ${feat.system?.way || "listed"} Way to take ${feat.name}.`);
     return false;
   }
@@ -2248,6 +2306,10 @@ async function addFeatToActor(actor, feat) {
   const data = feat.toObject ? feat.toObject() : foundry.utils.deepClone(feat);
   delete data._id;
   delete data.id;
+
+  if (actor.type === "npc") {
+    foundry.utils.setProperty(data, "system.way", "");
+  }
 
   await actor.createEmbeddedDocuments("Item", [data]);
   return true;
@@ -3330,6 +3392,30 @@ async function useConsumable(actor, item) {
     return;
   }
 
+  const stoneType = getResourceStoneType(item);
+
+  if (stoneType === "hearts") {
+    const currentMax = Number(actor.system.hearts?.max ?? 0);
+    const currentValue = Number(actor.system.hearts?.value ?? 0);
+    const nextMax = currentMax + 3;
+
+    await actor.update({
+      "system.hearts.max": nextMax,
+      "system.hearts.value": Math.min(currentValue + 3, nextMax)
+    });
+  }
+
+  if (stoneType === "stamina") {
+    const currentMax = Number(actor.system.stamina?.max ?? 0);
+    const currentValue = Number(actor.system.stamina?.value ?? 0);
+    const nextMax = currentMax + 1;
+
+    await actor.update({
+      "system.stamina.max": nextMax,
+      "system.stamina.value": Math.min(currentValue + 1, nextMax)
+    });
+  }
+
   const healMatch = effect.match(/heal\s+(\d+)/i);
 
   if (healMatch) {
@@ -3337,13 +3423,15 @@ async function useConsumable(actor, item) {
     await healActor(actor, heal);
   }
 
-  await item.update({ "system.uses.value": Math.max(uses - 1, 0) });
+  await consumeItemUnit(actor, item);
 
   await ChatMessage.create({
     speaker: ChatMessage.getSpeaker({ actor }),
     content: `
       <div class="ts-chat-card">
         <h2>${actor.name} uses ${item.name}</h2>
+        ${stoneType === "hearts" ? "<p>Maximum Hearts increased by 3.</p>" : ""}
+        ${stoneType === "stamina" ? "<p>Maximum Stamina increased by 1.</p>" : ""}
         <p>${item.system.description || ""}</p>
       </div>
     `
@@ -4420,12 +4508,16 @@ class TwilightSwordChampionSheet extends ActorSheet {
     context.activeSpells = getActiveSpells(this.actor);
     context.preparedSpell = getPreparedSpellSummary(this.actor);
     context.boonActive = system.boon === true || system.boon === "true";
+    context.actorTypeLabel = this.actor.type === "npc" ? "NPC" : "Champion";
+    context.isNPC = this.actor.type === "npc";
 
     return context;
   }
 
   activateListeners(html) {
     super.activateListeners(html);
+    activateActorStatTabOrder(html);
+    activateResourcePipListeners(this.actor, html);
 
     html.find(".defense-stance").click(async event => {
       event.preventDefault();
@@ -4668,17 +4760,21 @@ class TwilightSwordChampionSheet extends ActorSheet {
       await toggleItemWielded(this.actor, item);
     });
 
-    html.find(".short-rest").click(async () => this._shortRest());
-    html.find(".full-rest").click(async () => this._fullRest());
+    if (this.actor.type !== "npc") {
+      html.find(".short-rest").click(async () => this._shortRest());
+      html.find(".full-rest").click(async () => this._fullRest());
+    }
 
     html.find(".status-toggle").click(async event => {
       await toggleActorStatus(this.actor, event.currentTarget.dataset.statusId);
     });
 
-    html.find(".boon-toggle").click(async event => {
-      event.preventDefault();
-      await toggleActorBoon(this.actor);
-    });
+    if (this.actor.type !== "npc") {
+      html.find(".boon-toggle").click(async event => {
+        event.preventDefault();
+        await toggleActorBoon(this.actor);
+      });
+    }
   }
 
 async _onDrop(event) {
@@ -4695,6 +4791,11 @@ async _onDrop(event) {
   }
 
   if (item.type === "way") {
+    if (this.actor.type === "npc") {
+      ui.notifications.warn("NPCs do not use Ways.");
+      return false;
+    }
+
     const slot = event.target.closest("[data-way-slot]")?.dataset.waySlot;
     await applyWayToActor(this.actor, item, slot);
     return false;
@@ -4835,6 +4936,7 @@ class TwilightSwordMonsterSheet extends ActorSheet {
     context.items = this.actor.items;
     context.monsterVariant = monsterVariant;
     context.hearts = buildPips(system.hearts?.value, monsterVariant.effectiveHeartsMax, "heart");
+    context.stamina = buildPips(system.stamina?.value, system.stamina?.max, "stamina");
     context.statusEffects = getActorStatusEffects(this.actor);
     context.damageType = normalizeDamageType(system.damageType);
     context.elementalAffinity = normalizeElementalAffinity(system.elementalAffinity);
@@ -4855,6 +4957,8 @@ class TwilightSwordMonsterSheet extends ActorSheet {
 
   activateListeners(html) {
     super.activateListeners(html);
+    activateActorStatTabOrder(html);
+    activateResourcePipListeners(this.actor, html);
 
     html.find(".roll-initiative").click(async event => {
       event.preventDefault();
@@ -4997,9 +5101,9 @@ class TwilightSwordNPCSheet extends TwilightSwordChampionSheet {
   static get defaultOptions() {
     return foundry.utils.mergeObject(super.defaultOptions, {
       classes: ["twilight-sword", "sheet", "actor", "npc"],
-      template: "systems/twilight-sword/templates/actor/npc-sheet.hbs",
-      width: 760,
-      height: 720,
+      template: "systems/twilight-sword/templates/actor/champion-sheet.hbs",
+      width: 820,
+      height: 820,
       tabs: [{ navSelector: ".sheet-tabs", contentSelector: ".sheet-body", initial: "main" }]
     });
   }
@@ -5233,7 +5337,7 @@ Hooks.on("renderCombatTracker", (app, html) => {
 });
 
 Hooks.on("preUpdateActor", async (actor, changes) => {
-  if (actor.type !== "champion") return;
+  if (!["champion", "npc"].includes(actor.type)) return;
 
   const vit = foundry.utils.getProperty(changes, "system.abilities.vit.value");
   const heartsBonus = foundry.utils.getProperty(changes, "system.hearts.bonus");
@@ -5651,3 +5755,4 @@ Hooks.on("renderChatMessage", (message, html) => {
     });
   });
 });
+

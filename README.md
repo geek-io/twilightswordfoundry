@@ -1,6 +1,6 @@
-# twilightswordfoundry
+# Twilight Sword
 A Foundry v13 system for Twilight Sword by Two Little Mice
-
+- Module by: CJ Boat
 
 # 2026-05-08
 ## v 0.1.0
@@ -21,4 +21,9 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 - Bug fixes.  
 - Implemented ability to create items on Champion cards.  
 - Made a bonus field for health, to manually increase health for things like Kin bonuses.  
-- Added compendium ability.  
+- Added compendium ability. 
+
+## v 0.1.3
+- Bug fixes.  
+- Implemented heart / stamina stone usage. Using these will increase your hearts / stamina by 1 permanently, then be consumed.   
+- 

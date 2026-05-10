@@ -79,7 +79,20 @@
     "templates": ["base", "creature"],
     "role": "",
     "kin": "",
-    "disposition": ""
+    "disposition": "",
+    "origin": "",
+    "way": "",
+    "way2": "",
+    "hope": {
+      "value": 1
+    },
+    "zin": {
+      "value": 0,
+      "green": 0,
+      "blue": 0,
+      "red": 0
+    },
+    "boon": false
     }
   },
   "Item": {

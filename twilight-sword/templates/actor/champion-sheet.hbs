@@ -4,11 +4,15 @@
 
     <div class="header-fields">
       <h1>
-        <input name="name" type="text" value="{{actor.name}}" placeholder="Champion Name" />
+        <input name="name" type="text" value="{{actor.name}}" placeholder="{{actorTypeLabel}} Name" />
       </h1>
 
       <div class="grid grid-4">
-        <label>Origin <input name="system.origin" type="text" value="{{system.origin}}" /></label>
+        {{#if isNPC}}
+          <label>Role <input name="system.role" type="text" value="{{system.role}}" /></label>
+        {{else}}
+          <label>Origin <input name="system.origin" type="text" value="{{system.origin}}" /></label>
+        {{/if}}
         <label>
           Kin
           <input
@@ -19,41 +23,44 @@
             placeholder="Drag Kin item here"
           />
         </label>
-        <label>
-          Way 1
-          <input
-            name="system.way"
-            type="text"
-            value="{{system.way}}"
-            readonly
-            data-way-slot="1"
-            placeholder="Drag Way item here"
-          />
-        </label>
-        <label>
-          Way 2
-          <input
-            name="system.way2"
-            type="text"
-            value="{{system.way2}}"
-            readonly
-            data-way-slot="2"
-            placeholder="Drag Way item here"
-          />
-        </label>
+        {{#unless isNPC}}
+          <label>
+            Way 1
+            <input
+              name="system.way"
+              type="text"
+              value="{{system.way}}"
+              readonly
+              data-way-slot="1"
+              placeholder="Drag Way item here"
+            />
+          </label>
+          <label>
+            Way 2
+            <input
+              name="system.way2"
+              type="text"
+              value="{{system.way2}}"
+              readonly
+              data-way-slot="2"
+              placeholder="Drag Way item here"
+            />
+          </label>
+        {{/unless}}
+        {{#if isNPC}}
+          <label>Disposition <input name="system.disposition" type="text" value="{{system.disposition}}" /></label>
+        {{/if}}
       </div>
     </div>
   </header>
 
-  <section class="zelda-panel resources">
+  <section class="zelda-panel resources {{#if isNPC}}npc-resources{{/if}}">
     <div>
       <h3>Hearts</h3>
 
       <div class="pip-row">
         {{#each hearts as |pip|}}
-          <span class="{{#if pip.filled}}heart-full{{else}}heart-empty{{/if}}">
-            ♥
-          </span>
+          <button type="button" class="resource-pip {{#if pip.filled}}heart-full{{else}}heart-empty{{/if}}" data-resource="hearts" data-value="{{pip.value}}" title="Click to adjust Hearts">&#9829;</button>
         {{/each}}
       </div>
 
@@ -71,9 +78,7 @@
 
       <div class="pip-row">
         {{#each stamina as |pip|}}
-          <span class="{{#if pip.filled}}stamina-full{{else}}stamina-empty{{/if}}">
-            ◆
-          </span>
+          <button type="button" class="resource-pip {{#if pip.filled}}stamina-full{{else}}stamina-empty{{/if}}" data-resource="stamina" data-value="{{pip.value}}" title="Click to adjust Stamina">&#9670;</button>
         {{/each}}
       </div>
 
@@ -93,35 +98,37 @@
       {{/if}}
     </div>
 
-    <div>
-      <h3>Hope</h3>
-      <input name="system.hope.value" type="number" value="{{system.hope.value}}" />
-    </div>
+    {{#unless isNPC}}
+      <div>
+        <h3>Hope</h3>
+        <input name="system.hope.value" type="number" value="{{system.hope.value}}" />
+      </div>
 
-    <div class="boon-resource">
-      <h3>Boon</h3>
-      <button
-        type="button"
-        class="boon-toggle {{#if boonActive}}active{{/if}}"
-        title="Boon: score a critical success, save a Champion about to go K.O. and recover 1D12 Hearts, or recover all Stamina. Each Champion can only use 1 Boon per Session."
-      >
-        <span class="boon-icon">B</span>
-        <span>{{#if boonActive}}Ready{{else}}None{{/if}}</span>
-      </button>
-    </div>
+      <div class="boon-resource">
+        <h3>Boon</h3>
+        <button
+          type="button"
+          class="boon-toggle {{#if boonActive}}active{{/if}}"
+          title="Boon: score a critical success, save a Champion about to go K.O. and recover 1D12 Hearts, or recover all Stamina. Each Champion can only use 1 Boon per Session."
+        >
+          <span class="boon-icon">B</span>
+          <span>{{#if boonActive}}Ready{{else}}None{{/if}}</span>
+        </button>
+      </div>
 
-    <div class="inventory-resource {{#if inventory.encumbered}}over-limit{{/if}}">
-      <h3>Inventory</h3>
-      <strong>{{inventory.used}} / {{inventory.max}}</strong>
-      <label>
-        Bonus
-        <input name="system.inventory.bonus" type="number" value="{{inventory.bonus}}" />
-      </label>
-    </div>
+      <div class="inventory-resource {{#if inventory.encumbered}}over-limit{{/if}}">
+        <h3>Inventory</h3>
+        <strong>{{inventory.used}} / {{inventory.max}}</strong>
+        <label>
+          Bonus
+          <input name="system.inventory.bonus" type="number" value="{{inventory.bonus}}" />
+        </label>
+      </div>
+    {{/unless}}
   </section>
 
   <nav class="sheet-tabs tabs" data-group="primary">
-    <a class="item" data-tab="main">Champion</a>
+    <a class="item" data-tab="main">{{actorTypeLabel}}</a>
     <a class="item" data-tab="combat">Combat</a>
     <a class="item" data-tab="magic">Magic</a>
     <a class="item" data-tab="inventory">Inventory</a>
@@ -173,13 +180,15 @@
       </section>
 
       <section class="rest-buttons">
-        <button type="button" class="short-rest">
-          Short Rest
-        </button>
+        {{#unless isNPC}}
+          <button type="button" class="short-rest">
+            Short Rest
+          </button>
 
-        <button type="button" class="full-rest">
-          Full Rest
-        </button>
+          <button type="button" class="full-rest">
+            Full Rest
+          </button>
+        {{/unless}}
 
         <button type="button" class="roll-initiative">
           Roll Initiative
@@ -199,7 +208,7 @@
 
             <strong>{{item.name}}</strong>
 
-            <span>{{item.system.way}}</span>
+            {{#unless ../isNPC}}<span>{{item.system.way}}</span>{{/unless}}
 
             <button type="button" class="feat-chat" data-item-id="{{item.id}}">
               Chat
@@ -478,11 +487,13 @@
         </label>
       </section>
 
-      <section class="inventory-summary zelda-panel">
-        <div class="{{#if inventory.encumbered}}over-limit{{/if}}">
-          <h3>Inventory Points</h3>
-          <strong>{{inventory.used}} / {{inventory.max}}</strong>
-        </div>
+      <section class="inventory-summary zelda-panel {{#if isNPC}}npc-inventory-summary{{/if}}">
+        {{#unless isNPC}}
+          <div class="{{#if inventory.encumbered}}over-limit{{/if}}">
+            <h3>Inventory Points</h3>
+            <strong>{{inventory.used}} / {{inventory.max}}</strong>
+          </div>
+        {{/unless}}
 
         <div class="{{#if inventory.equipmentOver}}over-limit{{/if}}">
           <h3>Ready Equipment</h3>
@@ -608,3 +619,5 @@
 
   </section>
 </form>
+
+

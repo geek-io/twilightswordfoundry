@@ -173,6 +173,10 @@
   margin-bottom: 10px;
 }
 
+.twilight-sword .resources.npc-resources {
+  grid-template-columns: 2fr 2fr 1fr;
+}
+
 .twilight-sword .resources input {
   width: 48px;
 }
@@ -272,6 +276,10 @@
   margin-bottom: 12px;
 }
 
+.twilight-sword .inventory-summary.npc-inventory-summary {
+  grid-template-columns: repeat(3, 1fr);
+}
+
 .twilight-sword .inventory-summary strong {
   display: block;
   font-size: 18px;
@@ -360,6 +368,27 @@
   font-size: 24px;
   letter-spacing: 2px;
   line-height: 1.2;
+}
+
+.twilight-sword .resource-pip {
+  width: auto;
+  min-width: 0;
+  height: auto;
+  margin: 0;
+  padding: 0 1px;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  font-family: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+.twilight-sword .resource-pip:hover {
+  filter: brightness(1.15);
+  transform: translateY(-1px);
 }
 
 .twilight-sword .heart-full {

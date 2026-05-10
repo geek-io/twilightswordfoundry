@@ -77,7 +77,7 @@
       <h3>Hearts</h3>
       <div class="pip-row">
         {{#each hearts as |pip|}}
-          <span class="{{#if pip.filled}}heart-full{{else}}heart-empty{{/if}}">♥</span>
+          <button type="button" class="resource-pip {{#if pip.filled}}heart-full{{else}}heart-empty{{/if}}" data-resource="hearts" data-value="{{pip.value}}" title="Click to adjust Hearts">&#9829;</button>
         {{/each}}
       </div>
       <input name="system.hearts.value" type="number" value="{{system.hearts.value}}" />
@@ -91,6 +91,11 @@
 
     <div class="monster-stamina">
       <h3>Stamina</h3>
+      <div class="pip-row">
+        {{#each stamina as |pip|}}
+          <button type="button" class="resource-pip {{#if pip.filled}}stamina-full{{else}}stamina-empty{{/if}}" data-resource="stamina" data-value="{{pip.value}}" title="Click to adjust Stamina">&#9670;</button>
+        {{/each}}
+      </div>
       <input name="system.stamina.value" type="number" value="{{system.stamina.value}}" />
       /
       <input name="system.stamina.max" type="number" value="{{system.stamina.max}}" />
@@ -212,3 +217,5 @@
     </div>
   </section>
 </form>
+
+
