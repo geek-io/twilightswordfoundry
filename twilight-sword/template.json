@@ -114,6 +114,7 @@
       "range": "close",
       "damage": "1d6",
       "damageType": "non-magical",
+      "elementalDamageType": "none",
       "weaponFeats": "",
       "slot": 1,
       "hands": 1,
@@ -137,12 +138,15 @@
       "templates": ["base"],
       "spellType": "arcane",
       "cost": 0,
+      "roll": "none",
       "damage": "",
+      "failureDamage": "",
       "damageType": "non-magical",
       "duration": "",
       "status": "",
       "statusDuration": "",
       "statusOnDamage": false,
+      "onFailEffect": "",
       "expended": false
     },
     "consumable": {

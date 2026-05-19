@@ -94,6 +94,11 @@
         placeholder="accurate, defensive, finesse"
       />
 
+      <label>Elemental Damage Type</label>
+      <select name="system.elementalDamageType">
+        {{{tsElementalAffinityOptions elementalDamageType}}}
+      </select>
+
       <label>Inventory Slots</label>
       <input name="system.slot" type="number" min="0" value="{{system.slot}}" />
 
@@ -158,7 +163,9 @@
       </select>
 
       <label>Roll</label>
-      <input name="system.roll" type="text" value="{{system.roll}}" />
+      <select name="system.roll">
+        {{{tsSpellRollOptions system.roll}}}
+      </select>
 
       <label>Range</label>
       <input name="system.range" type="text" value="{{system.range}}" />
@@ -199,12 +206,20 @@
         </label>
 
         <label>
+          Damage on Failed Roll
+          <input name="system.failureDamage" type="text" value="{{system.failureDamage}}" placeholder="Optional" />
+        </label>
+
+        <label>
           Type
           <select name="system.damageType">
             {{{tsDamageTypeOptions damageType}}}
           </select>
         </label>
       </div>
+
+      <label>On Fail Effect</label>
+      <textarea name="system.onFailEffect" placeholder="What happens if the spell roll fails?">{{system.onFailEffect}}</textarea>
 
       <label>
         <input name="system.expended" type="checkbox" {{checked system.expended}} />

@@ -1041,7 +1041,9 @@ function getAbilityLabel(abilityKey) {
 
 function buildAbilityOptions(selectedAbility = "", { includeBlank = true } = {}) {
   const selected = normalizeAbilityKey(selectedAbility);
-  const options = includeBlank ? ['<option value="">None</option>'] : [];
+  const options = includeBlank
+    ? [`<option value="none" ${!selected || selected === "none" ? "selected" : ""}>None</option>`]
+    : [];
 
   for (const ability of ABILITY_OPTIONS) {
     options.push(
@@ -1273,7 +1275,7 @@ async function rollWeaponAttack(actor, weapon, options = {}) {
   const damageType = normalizeDamageType(system.damageType);
   const damageTypeLabel = getDamageTypeLabel(damageType);
   const elementalTypeWarning = feats.has("elemental") && elementalDamageType === "none"
-    ? "<p><strong>Elemental:</strong> Write this feat as Elemental [type], such as Elemental Fire, to add +1D4 typed damage.</p>"
+    ? "<p><strong>Elemental:</strong> Choose an Elemental Damage Type on this weapon, or write this feat as Elemental [type], to add +1D4 typed damage.</p>"
     : "";
   const elementalDamageData = elementalRoll
     ? ` data-elemental-damage="${elementalRoll.total}" data-elemental-damage-type="${elementalDamageType}"`
@@ -1543,7 +1545,7 @@ function canMonsterUseReactionType(actor, type) {
 }
 
 function canActorUseDefenseReaction(actor) {
-  return actor?.type === "champion" || canMonsterUseVariantReaction(actor);
+  return actor?.type === "champion" || actor?.type === "npc" || canMonsterUseVariantReaction(actor);
 }
 
 function shouldOfferReactionButtons(attacker, defender = null) {
@@ -2148,6 +2150,8 @@ function getWeaponFeats(weapon) {
     if (raw.includes(feat)) feats.add(feat);
   }
 
+  if (/\belem\.?\b/.test(raw)) feats.add("elemental");
+
   return feats;
 }
 
@@ -2166,8 +2170,11 @@ function getWeaponFeatText(weapon) {
 }
 
 function getWeaponElementalDamageType(weapon) {
+  const explicitType = normalizeElementalAffinity(weapon.system?.elementalDamageType);
+  if (explicitType !== "none") return explicitType;
+
   const raw = getWeaponFeatText(weapon).toLowerCase();
-  const match = raw.match(/\belemental\s*(?:\[|\(|:|-)?\s*([a-z -]+?)\s*(?:\]|\)|[,;|]|$)/i);
+  const match = raw.match(/\b(?:elemental|elem\.?)\s*(?:\[|\(|:|-)?\s*([a-z -]+?)\s*(?:\]|\)|[,;|]|$)/i);
 
   if (match?.[1]) {
     const parsed = normalizeElementalAffinity(match[1]);
@@ -3953,11 +3960,13 @@ function buildGrantedMagicSpell(actor, sourceItem, spellName) {
         roll: "",
         range: "",
         damage: "",
+        failureDamage: "",
         damageType: "non-magical",
         duration: "",
         status: "",
         statusDuration: "",
         statusOnDamage: false,
+        onFailEffect: "",
         description: `Granted by ${sourceItem.name}. Create a spell card named "${spellName}" to automate this spell.`
       };
 
@@ -4309,16 +4318,18 @@ async function chooseShortRestSpellRecharge(actor) {
 
 async function castSpell(actor, spell) {
   const isMagicItemSpell = Boolean(spell.magicSpellSourceId);
-  if (spell.magicSpellSourceId) {
-    const sourceItem = actor.items.get(spell.magicSpellSourceId);
+  let magicSpellSourceItem = null;
 
-    if (!sourceItem?.system?.equipped) {
+  if (spell.magicSpellSourceId) {
+    magicSpellSourceItem = actor.items.get(spell.magicSpellSourceId);
+
+    if (!magicSpellSourceItem?.system?.equipped) {
       ui.notifications.warn(`${spell.name} is only available while its source item is equipped.`);
       return;
     }
 
     if (spell.magicSpellMissingDefinition) {
-      ui.notifications.warn(`${sourceItem.name} grants ${spell.name}, but no spell card named "${spell.magicSpellName}" exists.`);
+      ui.notifications.warn(`${magicSpellSourceItem.name} grants ${spell.name}, but no spell card named "${spell.magicSpellName}" exists.`);
       return;
     }
   }
@@ -4384,7 +4395,11 @@ async function castSpell(actor, spell) {
   let spellRollFailed = false;
   let spellCriticalSuccess = false;
 
-  if (rollAbilityKey && rollAbilityKey !== "none") {
+  if (isMagicItemSpell) {
+    rollResult = `
+      <p><strong>Roll:</strong> None. Magic item casting does not require an Ability roll.</p>
+    `;
+  } else if (rollAbilityKey && rollAbilityKey !== "none") {
     const spellCastBonus = getSpellCastRollBonus(actor, rollAbilityKey);
     const result = await rollAbility(actor, rollAbilityKey, {
       spellCast: true,
@@ -4405,6 +4420,10 @@ async function castSpell(actor, spell) {
         ${spellCriticalSuccess ? "<p><strong>Critical Spell:</strong> This spell is not expended.</p>" : ""}
       `;
     }
+  } else {
+    rollResult = `
+      <p><strong>Roll:</strong> None.</p>
+    `;
   }
 
   if (preparedSpellReady) {
@@ -4474,12 +4493,17 @@ async function castSpell(actor, spell) {
 
   const spellDamageType = normalizeDamageType(spell.system.damageType);
   const spellDamageTypeLabel = getDamageTypeLabel(spellDamageType);
+  const spellFailureDamage = String(spell.system.failureDamage || "").trim();
+  const effectiveSpellDamage = spellRollFailed && spellFailureDamage
+    ? spellFailureDamage
+    : spell.system.damage;
+  const spellOnFailEffect = String(spell.system.onFailEffect || "").trim();
   const spellStatus = normalizeStatusId(spell.system.status);
   const spellStatusDuration = spell.system.statusDuration || "";
   const spellStatusOnDamage = spell.system.statusOnDamage === true || spell.system.statusOnDamage === "true";
   const spellStatusSource = `${actor.name}: ${spell.name}`;
   const healingSpellNames = ["heal", "healing prayer", "life"];
-  const spellHasDamageButton = spell.system.damage && !healingSpellNames.includes(spellName);
+  const spellHasDamageButton = effectiveSpellDamage && !healingSpellNames.includes(spellName);
   const spellStatusSummary = spellStatus
     ? buildMonsterActionStatusSummary({
         status: spellStatus,
@@ -4528,22 +4552,24 @@ async function castSpell(actor, spell) {
         ${rollResult}
         <p><strong>Range:</strong> ${spell.system.range || "—"}</p>
         ${rangeInfo ? `<p><strong>Target Distance:</strong> ${rangeInfo.label}</p>` : ""}
-        ${isMagicItemSpell ? `<p><strong>Magic Item:</strong> ${spellCriticalSuccess ? "Stamina refunded by Critical Spell." : "Spent 1 Stamina to cast through the item."}</p>` : ""}
+        ${isMagicItemSpell ? `<p><strong>Magic Item:</strong> Spent 1 Stamina to cast through ${escapeHtml(magicSpellSourceItem?.name || "the item")}. Armor and shields do not prevent this casting.</p>` : ""}
         ${preparedSpellReady ? `<p><strong>Prepared Spell:</strong> First prepared cast does not expend this spell.</p>` : ""}
         ${!isMagicItemSpell && spentStaminaToCast ? `<p><strong>Expended Spell:</strong> ${spellCriticalSuccess ? "Stamina refunded by Critical Spell." : "Spent 1 Stamina to cast again."}</p>` : ""}
         ${healingButton}
-        ${spell.system.damage && !["heal", "healing prayer", "life"].includes(spellName)
-          ? `<p><strong>Damage:</strong> ${spell.system.damage}</p>`
+        ${spellRollFailed && spellOnFailEffect ? `<p><strong>On Fail:</strong> ${escapeHtml(spellOnFailEffect)}</p>` : ""}
+        ${spellRollFailed && spellFailureDamage ? `<p><strong>Failed Cast Damage:</strong> ${escapeHtml(spellFailureDamage)} instead of ${escapeHtml(spell.system.damage || "none")}.</p>` : ""}
+        ${effectiveSpellDamage && !["heal", "healing prayer", "life"].includes(spellName)
+          ? `<p><strong>Damage:</strong> ${escapeHtml(effectiveSpellDamage)}</p>`
           : ""}
-        ${spell.system.damage && spellDamageTypeLabel && !["heal", "healing prayer", "life"].includes(spellName)
+        ${effectiveSpellDamage && spellDamageTypeLabel && !["heal", "healing prayer", "life"].includes(spellName)
           ? `<p><strong>Damage Type:</strong> ${spellDamageTypeLabel}</p>`
           : ""}
         ${spellStatusSummary}
         ${spellDuration ? `<p><strong>Duration:</strong> ${escapeHtml(spellDuration)}</p>` : ""}
         <p>${spell.system.description || ""}</p>
         ${
-          spell.system.damage && !["heal", "healing prayer", "life"].includes(spellName)
-            ? `<button class="ts-roll-spell-damage" data-item-id="${spell.id}" data-damage-type="${spellDamageType}" ${magicSpellData} ${spellStatusDamageData}>
+          effectiveSpellDamage && !["heal", "healing prayer", "life"].includes(spellName)
+            ? `<button class="ts-roll-spell-damage" data-item-id="${spell.id}" data-damage-formula="${escapeHtml(effectiveSpellDamage)}" data-damage-type="${spellDamageType}" ${magicSpellData} ${spellStatusDamageData}>
                 Roll Spell Damage
               </button>`
             : ""
@@ -5735,6 +5761,7 @@ class TwilightSwordItemSheet extends ItemSheet {
     context.armorType = normalizeArmorTypeValue(this.item.system?.armorType);
     context.spellType = normalizeSpellTypeValue(this.item.system?.spellType);
     context.damageType = normalizeDamageType(this.item.system?.damageType);
+    context.elementalDamageType = normalizeElementalAffinity(this.item.system?.elementalDamageType);
     context.status = normalizeStatusId(this.item.system?.status);
 
     return context;
@@ -5802,6 +5829,9 @@ Hooks.once("init", function () {
   Handlebars.registerHelper("tsElementalAffinityLabel", affinity => getElementalAffinityLabel(affinity));
   Handlebars.registerHelper("tsDamageTypeLabel", damageType => getDamageTypeLabel(damageType));
   Handlebars.registerHelper("tsAbilityLabel", abilityKey => getAbilityLabel(abilityKey));
+  Handlebars.registerHelper("tsSpellRollOptions", rollAbility =>
+    new Handlebars.SafeString(buildAbilityOptions(rollAbility, { includeBlank: true }))
+  );
   Handlebars.registerHelper("tsDamageTypeOptions", damageType =>
     new Handlebars.SafeString(buildDamageTypeOptions(damageType))
   );
@@ -6387,12 +6417,14 @@ Hooks.on("renderChatMessage", (message, html) => {
       return;
     }
 
-    if (!spell.system.damage) {
+    const damageFormula = event.currentTarget.dataset.damageFormula || spell.system.damage;
+
+    if (!damageFormula) {
       ui.notifications.warn(`${spell.name} has no damage formula.`);
       return;
     }
 
-    const roll = await new Roll(spell.system.damage).evaluate();
+    const roll = await new Roll(damageFormula).evaluate();
     const damageType = normalizeDamageType(
       event.currentTarget.dataset.damageType || spell.system.damageType
     );
@@ -6418,6 +6450,7 @@ Hooks.on("renderChatMessage", (message, html) => {
       content: `
         <div class="ts-chat-card">
           <h2>${spell.name} Damage</h2>
+          ${damageFormula !== spell.system.damage ? `<p><strong>Damage Formula:</strong> ${escapeHtml(damageFormula)}</p>` : ""}
           <p><strong>Damage:</strong> ${roll.total}</p>
           ${damageTypeLabel ? `<p><strong>Damage Type:</strong> ${damageTypeLabel}</p>` : ""}
           ${statusSummary}

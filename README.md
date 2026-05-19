@@ -47,3 +47,13 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 ## v 0.1.5
 - Bug fixes.  
 - Allows for monster actions to be moved up/down.  
+
+# 2026-05-19
+## v 0.1.6
+- Bug fixes.
+- New update to core rules from 2LM, including:
+	- More spells now either don't require a roll or have an "on a fail" effect
+		- The system now appropriately has a "none" for a cast dropdown.
+	- NPCs can now take reactions
+	- Casting from legendary artifacts does NOT require a roll anymore
+	- Elemental damage from the Elemental feat now also applies to arcane missiles
