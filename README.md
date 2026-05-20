@@ -57,3 +57,8 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 	- NPCs can now take reactions
 	- Casting from legendary artifacts does NOT require a roll anymore
 	- Elemental damage from the Elemental feat now also applies to arcane missiles
+
+# 2026-05-20
+## v 0.1.7
+- Bug fixes.
+- Added the ability to drag and drop spells onto monster cards, for cards like Hornex and Wizzorb.

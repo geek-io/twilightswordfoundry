@@ -71,6 +71,7 @@
 
   <nav class="sheet-tabs tabs" data-group="primary">
     <a class="item" data-tab="actions">Actions</a>
+    <a class="item" data-tab="magic">Spells</a>
     <a class="item" data-tab="main">Monster</a>
     <a class="item" data-tab="notes">Notes</a>
   </nav>
@@ -137,6 +138,84 @@
           </li>
         {{/each}}
       </ol>
+    </div>
+
+    <div class="tab" data-group="primary" data-tab="magic">
+      <section class="zelda-panel active-spells">
+        <h2>Active Spells</h2>
+
+        {{#if activeSpells.length}}
+          <ol class="active-spell-list">
+            {{#each activeSpells as |spell|}}
+              <li class="active-spell" data-active-spell-id="{{spell.id}}">
+                <div class="active-spell-info">
+                  <strong>{{spell.name}}</strong>
+                  <div class="active-spell-meta">
+                    {{#if spell.duration}}<span>{{spell.duration}}</span>{{/if}}
+                    {{#if spell.target}}<span>Target: {{spell.target}}</span>{{/if}}
+                    {{#if spell.startedRound}}<span>Round {{spell.startedRound}}</span>{{/if}}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  class="active-spell-end"
+                  data-active-spell-id="{{spell.id}}"
+                >
+                  End
+                </button>
+              </li>
+            {{/each}}
+          </ol>
+        {{else}}
+          <p>No active spells.</p>
+        {{/if}}
+      </section>
+
+      <section class="zelda-panel monster-spells">
+        <div class="section-heading">
+          <h2>Monster Spells</h2>
+          <button type="button" class="create-monster-spell">+ Add Spell</button>
+        </div>
+
+        <p class="inventory-note">Drag spell cards here, or add a local spell for monsters like Hornex.</p>
+
+        <ol class="items-list">
+          {{#each spells as |item|}}
+            <li
+              class="item zelda-item spell-row {{#if item.system.expended}}spell-expended{{/if}}"
+              data-item-id="{{item.id}}"
+              title="{{tsItemTooltip item}}"
+              {{#if item.magicSpellSourceId}}data-magic-spell-source-id="{{item.magicSpellSourceId}}" data-magic-spell-name="{{item.magicSpellName}}"{{/if}}
+            >
+              <img src="{{item.img}}" width="32" height="32" />
+
+              <strong>{{item.name}}</strong>
+
+              <span>{{tsSpellTypeLabel item.system.spellType}}</span>
+
+              <span>{{item.system.damage}}</span>
+              {{#if item.magicSpellSourceName}}<span>From {{item.magicSpellSourceName}}</span>{{/if}}
+
+              <button
+                type="button"
+                class="spell-cast"
+                data-item-id="{{item.id}}"
+                {{#if item.magicSpellSourceId}}data-magic-spell-source-id="{{item.magicSpellSourceId}}" data-magic-spell-name="{{item.magicSpellName}}"{{/if}}
+              >
+                Cast
+              </button>
+
+              {{#unless item.magicSpellSourceId}}
+                <div class="item-controls">
+                  <button type="button" class="item-edit" data-item-id="{{item.id}}">&#9776;</button>
+                  <button type="button" class="item-delete" data-item-id="{{item.id}}">&#10005;</button>
+                </div>
+              {{/unless}}
+            </li>
+          {{/each}}
+        </ol>
+      </section>
     </div>
 
     <div class="tab" data-group="primary" data-tab="main">

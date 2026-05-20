@@ -4105,6 +4105,19 @@ async function createOwnedInventoryItem(actor) {
   });
 }
 
+async function createOwnedSpell(actor, name = "New Spell") {
+  if (!actor) return null;
+
+  const created = await actor.createEmbeddedDocuments("Item", [{
+    name,
+    type: "spell"
+  }]);
+  const spell = created[0];
+
+  spell?.sheet?.render(true);
+  return spell || null;
+}
+
 async function showItemRowContextMenu(actor, row) {
   const item = getSheetItemFromRow(actor, row);
   const ownedItem = actor.items.get(row?.dataset.itemId);
@@ -4581,6 +4594,40 @@ async function castSpell(actor, spell) {
   });
 }
 
+async function castSpellFromSheetEvent(actor, event) {
+  event.preventDefault();
+
+  const button = event.currentTarget;
+  const itemElement =
+    button.closest("[data-item-id]") ||
+    button.closest(".item");
+
+  const itemId =
+    button.dataset.itemId ||
+    itemElement?.dataset.itemId;
+
+  if (!itemId) {
+    ui.notifications.warn("Could not find spell item ID on the sheet.");
+    console.warn("Twilight Sword | Spell cast button missing item ID", button, itemElement);
+    return;
+  }
+
+  let spell = actor.items.get(itemId);
+
+  if (!spell && button.dataset.magicSpellSourceId) {
+    const sourceItem = actor.items.get(button.dataset.magicSpellSourceId);
+    if (sourceItem) spell = buildGrantedMagicSpell(actor, sourceItem, button.dataset.magicSpellName || "");
+  }
+
+  if (!spell) {
+    ui.notifications.warn(`Could not find spell with ID ${itemId}.`);
+    console.warn("Twilight Sword | Actor items:", actor.items.contents);
+    return;
+  }
+
+  await castSpell(actor, spell);
+}
+
 
 // Monster Actions
 
@@ -4836,7 +4883,8 @@ async function editMonsterAction(actor, index = null) {
           await actor.update({ "system.actions": actions });
         }
       }
-    }
+    },
+    default: "save"
   }).render(true);
 }
 
@@ -4893,7 +4941,8 @@ async function importMonsterActions(actor) {
           ui.notifications.info(`Imported ${actions.length} actions.`);
         }
       }
-    }
+    },
+    default: "import"
   }).render(true);
 }
 
@@ -5234,37 +5283,7 @@ class TwilightSwordChampionSheet extends ActorSheet {
     });
 
   html.find(".spell-cast").click(async event => {
-    event.preventDefault();
-
-    const button = event.currentTarget;
-    const itemElement =
-      button.closest("[data-item-id]") ||
-      button.closest(".item");
-
-    const itemId =
-      button.dataset.itemId ||
-      itemElement?.dataset.itemId;
-
-    if (!itemId) {
-      ui.notifications.warn("Could not find spell item ID on the sheet.");
-      console.warn("Twilight Sword | Spell cast button missing item ID", button, itemElement);
-      return;
-    }
-
-    let spell = this.actor.items.get(itemId);
-
-    if (!spell && button.dataset.magicSpellSourceId) {
-      const sourceItem = this.actor.items.get(button.dataset.magicSpellSourceId);
-      if (sourceItem) spell = buildGrantedMagicSpell(this.actor, sourceItem, button.dataset.magicSpellName || "");
-    }
-
-    if (!spell) {
-      ui.notifications.warn(`Could not find spell with ID ${itemId}.`);
-      console.warn("Twilight Sword | Actor items:", this.actor.items.contents);
-      return;
-    }
-
-    await castSpell(this.actor, spell);
+    await castSpellFromSheetEvent(this.actor, event);
   });
 
     html.find(".active-spell-end").click(async event => {
@@ -5474,6 +5493,8 @@ class TwilightSwordMonsterSheet extends ActorSheet {
     context.system = system;
     context.items = this.actor.items;
     context.feats = this.actor.items.filter(i => i.type === "feat");
+    context.spells = getActorSpellList(this.actor);
+    context.activeSpells = getActiveSpells(this.actor);
     context.monsterVariant = monsterVariant;
     context.hearts = buildPips(system.hearts?.value, monsterVariant.effectiveHeartsMax, "heart");
     context.stamina = buildPips(system.stamina?.value, system.stamina?.max, "stamina");
@@ -5523,6 +5544,11 @@ class TwilightSwordMonsterSheet extends ActorSheet {
       await createOwnedFeat(this.actor);
     });
 
+    html.find(".create-monster-spell").click(async event => {
+      event.preventDefault();
+      await createOwnedSpell(this.actor);
+    });
+
     html.find(".feat-chat").click(async event => {
       event.preventDefault();
       event.stopPropagation();
@@ -5565,6 +5591,20 @@ class TwilightSwordMonsterSheet extends ActorSheet {
     html.find(".zelda-item").contextmenu(async event => {
       event.preventDefault();
       await showItemRowContextMenu(this.actor, event.currentTarget);
+    });
+
+    html.find(".spell-cast").click(async event => {
+      await castSpellFromSheetEvent(this.actor, event);
+    });
+
+    html.find(".active-spell-end").click(async event => {
+      event.preventDefault();
+
+      await endActiveSpell(
+        this.actor,
+        event.currentTarget.dataset.activeSpellId,
+        "Ended manually."
+      );
     });
 
     html.find(".monster-action-menu").click(event => {
@@ -5713,6 +5753,14 @@ class TwilightSwordMonsterSheet extends ActorSheet {
 
     if (item.type === "feat") {
       await addFeatToActor(this.actor, item);
+      return false;
+    }
+
+    if (item.type === "spell") {
+      const data = item.toObject ? item.toObject() : foundry.utils.deepClone(item);
+      delete data._id;
+      delete data.id;
+      await this.actor.createEmbeddedDocuments("Item", [data]);
       return false;
     }
 
