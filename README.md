@@ -2,12 +2,10 @@
 A Foundry v13 system for Twilight Sword by Two Little Mice
 - Module by: Geek IO Dev Team
 
-# 2026-05-08
-## v 0.1.0
+# v 0.1.0
 - Initial Release
 
-# 2026-05-09
-## v 0.1.1
+# v 0.1.1
 - Bug fixes.  
 - Implemented simple "Way" cards.  
 - Ways can now be dragged and dropped into the Champion card for ease.  
@@ -17,21 +15,20 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 - "Lockpick" / "Lock Pick" items are a special case consumable item that will prompt in the chat if the Stealth roll is failed to see if the lockpick breaks. If the stealth roll fails again, then the lockpick will be consumed.  
 - Implemented a Boon marker on the Champion sheet.  
 
-## v 0.1.2
+# v 0.1.2
 - Bug fixes.  
 - Implemented ability to create items on Champion cards.  
 - Made a bonus field for health, to manually increase health for things like Kin bonuses.  
 - Added compendium ability. 
 
-## v 0.1.3
+# v 0.1.3
 - Bug fixes.  
 - Implemented heart / stamina stone usage. Using these will increase your hearts / stamina by 1 permanently, then be consumed.   
 - Updated NPC sheets to be more like Champion sheets, but more streamlined and lightweight.  
 - Added the ability to click on Hearts and Stamina points to add / subtract.  
 - Added the ability to tab through the stats on Champion, Monster, and NPC sheets.  
 
-# 2026-05-10
-## v 0.1.4
+# v 0.1.4
 - Bug fixes.
 - Cleaned up monster cards.
 - Added "prone" status effect.
@@ -43,13 +40,11 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 	- Others will be added over time.
 - Added "Twlight" elemental type - it is Strong to every other element, and every other element is weak to it.
 
-# 2026-05-11
-## v 0.1.5
+# v 0.1.5
 - Bug fixes.  
 - Allows for monster actions to be moved up/down.  
 
-# 2026-05-19
-## v 0.1.6
+# v 0.1.6
 - Bug fixes.
 - New update to core rules from 2LM, including:
 	- More spells now either don't require a roll or have an "on a fail" effect
@@ -58,7 +53,6 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 	- Casting from legendary artifacts does NOT require a roll anymore
 	- Elemental damage from the Elemental feat now also applies to arcane missiles
 
-# 2026-05-20
-## v 0.1.7
+# v 0.1.7
 - Bug fixes.
 - Added the ability to drag and drop spells onto monster cards, for cards like Hornex and Wizzorb.
