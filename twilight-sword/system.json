@@ -3,9 +3,9 @@
     "title":  "Twilight Sword",
     "description":  "A Foundry VTT v13 system for Twilight Sword by Two Little Mice.",
     "version":  "0.1.7",
-    "url":  "https://github.com/cjboat/twilightswordfoundry",
-    "manifest":  "https://raw.githubusercontent.com/cjboat/twilightswordfoundry/main/twilight-sword/system.json",
-    "download":  "https://raw.githubusercontent.com/cjboat/twilightswordfoundry/main/system.zip",
+    "url":  "https://github.com/geek-io/twilightswordfoundry",
+    "manifest":  "https://raw.githubusercontent.com/geek-io/twilightswordfoundry/main/twilight-sword/system.json",
+    "download":  "https://raw.githubusercontent.com/geek-io/twilightswordfoundry/main/system.zip",
     "compatibility":  {
                           "minimum":  "13",
                           "verified":  "13"
