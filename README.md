@@ -56,3 +56,10 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 # v 0.1.7
 - Bug fixes.
 - Added the ability to drag and drop spells onto monster cards, for cards like Hornex and Wizzorb.
+
+# v 0.1.8
+- Bug fixes.
+- Fixed Twilight Sword initiative sorting to run low-to-high for rolled and manually entered initiative.
+- Fixed manual initiative inputs so negative values can be entered.
+- Fixed initiative rolling for multiple monsters that share the same actor.
+- Reduced duplicate start-of-turn status and regeneration rolls for monster threat turns.

@@ -920,9 +920,23 @@ async function enforceTurnActor(actor, actionName = "act", { reaction = false } 
 
 // Status Processing
 
+function getStartOfTurnStatusKey(combat, combatant) {
+  return [
+    combat?.id || "no-combat",
+    Number(combat?.round || 0),
+    Number(combat?.turn ?? -1),
+    combatant?.id || "no-combatant"
+  ].join(":");
+}
 
-async function processStartOfTurnStatuses(actor) {
+async function processStartOfTurnStatuses(actor, combat = game.combat, combatant = combat?.combatant) {
   if (!actor) return;
+
+  if (combatant) {
+    const turnKey = getStartOfTurnStatusKey(combat, combatant);
+    if (combatant.getFlag("twilight-sword", "startOfTurnStatusKey") === turnKey) return;
+    await combatant.setFlag("twilight-sword", "startOfTurnStatusKey", turnKey);
+  }
 
   if (await actorHasStatus(actor, "burn")) {
     await applyDirectDamage(actor, 1, { ignoreArmor: true, reason: "Burn" });
@@ -1491,20 +1505,22 @@ async function processMonsterStartOfTurnAbilities(actor, combat, combatant) {
   const threatTurn = Number(combatant?.getFlag("twilight-sword", "threatTurn") || 1);
   if (threatTurn !== 1) return;
 
-  await processMonsterRegeneration(actor, combat);
+  await processMonsterRegeneration(actor, combat, combatant);
 }
 
-async function processMonsterRegeneration(actor, combat) {
+async function processMonsterRegeneration(actor, combat, combatant) {
   const regeneration = getMonsterRegenerationAbility(actor);
   if (!regeneration) return;
 
-  const round = Number(combat?.round || 0);
-  const combatId = combat?.id || "no-combat";
-  const turnKey = `${combatId}:${round}`;
+  const turnKey = getStartOfTurnStatusKey(combat, combatant);
 
-  if (actor.getFlag("twilight-sword", "regenerationTurnKey") === turnKey) return;
-
-  await actor.setFlag("twilight-sword", "regenerationTurnKey", turnKey);
+  if (combatant) {
+    if (combatant.getFlag("twilight-sword", "regenerationTurnKey") === turnKey) return;
+    await combatant.setFlag("twilight-sword", "regenerationTurnKey", turnKey);
+  } else {
+    if (actor.getFlag("twilight-sword", "regenerationTurnKey") === turnKey) return;
+    await actor.setFlag("twilight-sword", "regenerationTurnKey", turnKey);
+  }
 
   const current = Number(actor.system.hearts?.value ?? 0);
   const max = getMonsterEffectiveMaxHearts(actor);
@@ -1926,6 +1942,34 @@ function getCombatantsForActorToken(combat, actor, token) {
   );
 }
 
+function getTokenFromCombatant(combatant) {
+  if (!combatant) return null;
+  if (combatant.token?.object) return combatant.token.object;
+  if (combatant.tokenId) return canvas.tokens.get(combatant.tokenId) || null;
+  return null;
+}
+
+function getTokenForActor(actor, preferredToken = null) {
+  if (preferredToken?.actor?.id === actor?.id) return preferredToken;
+
+  return canvas.tokens.controlled.find(t => t.actor?.id === actor.id)
+    || canvas.tokens.placeables.find(t => t.actor?.id === actor.id);
+}
+
+function getPrimaryTargetToken() {
+  return Array.from(game.user.targets)[0];
+}
+
+function getSquareDistanceBetweenTokens(sourceToken, targetToken) {
+  if (!sourceToken || !targetToken) return null;
+
+  const gridSize = canvas.grid.size;
+  const dx = Math.abs(sourceToken.center.x - targetToken.center.x) / gridSize;
+  const dy = Math.abs(sourceToken.center.y - targetToken.center.y) / gridSize;
+
+  return Math.max(dx, dy);
+}
+
 async function syncThreatCombatants(combat, actor, token) {
   const turns = getMonsterThreatTurns(actor);
   const existing = getCombatantsForActorToken(combat, actor, token);
@@ -1960,8 +2004,31 @@ async function syncThreatCombatants(combat, actor, token) {
   return existing;
 }
 
-async function rollInitiativeForActor(actor) {
-  let combat = game.combat;
+function getInitiativeRollModifier(actor) {
+  const rawBaseModifier = Number(actor.system.initiative?.modifier ?? actor.system.initiative ?? 0);
+  const baseModifier = Number.isFinite(rawBaseModifier) ? rawBaseModifier : 0;
+  const tempoModifier = actorHasFeatNamed(actor, "tempo") ? -1 : 0;
+  const swiftModifier = actor.type === "monster" && actorHasFeatNamed(actor, "swift") ? -1 : 0;
+
+  return {
+    baseModifier,
+    tempoModifier,
+    swiftModifier,
+    total: baseModifier + tempoModifier + swiftModifier
+  };
+}
+
+function getCombatantTokenKey(combatant) {
+  return [
+    combatant?.sceneId || combatant?.parent?.scene?.id || canvas.scene?.id || "scene",
+    combatant?.tokenId || combatant?.token?.id || combatant?.id || "token"
+  ].join(":");
+}
+
+async function rollInitiativeForToken(actor, token, { combat: providedCombat = game.combat } = {}) {
+  if (!actor || !token) return;
+
+  let combat = providedCombat;
 
   if (!combat) {
     combat = await Combat.create({
@@ -1970,20 +2037,7 @@ async function rollInitiativeForActor(actor) {
     });
   }
 
-  let token =
-    canvas.tokens.controlled.find(t => t.actor?.id === actor.id) ||
-    canvas.tokens.placeables.find(t => t.actor?.id === actor.id);
-
-  if (!token) {
-    ui.notifications.warn(`Place or select a token for ${actor.name} before rolling initiative.`);
-    return;
-  }
-
-  const rawBaseModifier = Number(actor.system.initiative?.modifier ?? actor.system.initiative ?? 0);
-  const baseModifier = Number.isFinite(rawBaseModifier) ? rawBaseModifier : 0;
-  const tempoModifier = actorHasFeatNamed(actor, "tempo") ? -1 : 0;
-  const swiftModifier = actor.type === "monster" && actorHasFeatNamed(actor, "swift") ? -1 : 0;
-  const modifier = baseModifier + tempoModifier + swiftModifier;
+  const { tempoModifier, swiftModifier, total: modifier } = getInitiativeRollModifier(actor);
   const combatants = await syncThreatCombatants(combat, actor, token);
   const rolls = [];
   const initiativeTotals = [];
@@ -1996,7 +2050,7 @@ async function rollInitiativeForActor(actor) {
     rolls.push(roll);
     initiativeTotals.push(total);
 
-    await combat.setInitiative(combatant.id, -total);
+    await combat.setInitiative(combatant.id, total);
   }
 
   const modifierText = modifier
@@ -2028,6 +2082,35 @@ async function rollInitiativeForActor(actor) {
   ui.notifications.info(`${actor.name} rolled ${combatants.length} initiative ${combatants.length === 1 ? "turn" : "turns"}.`);
 }
 
+async function rollInitiativeForActor(actor) {
+  const token = getTokenForActor(actor);
+
+  if (!token) {
+    ui.notifications.warn(`Place or select a token for ${actor.name} before rolling initiative.`);
+    return;
+  }
+
+  return rollInitiativeForToken(actor, token);
+}
+
+async function rollInitiativeForCombatant(combatant, { combat = game.combat } = {}) {
+  const actor = combatant?.actor;
+
+  if (!actor) {
+    ui.notifications.warn("Could not find combatant actor.");
+    return;
+  }
+
+  const token = getTokenFromCombatant(combatant) || getTokenForActor(actor);
+
+  if (!token) {
+    ui.notifications.warn(`Place or select a token for ${actor.name} before rolling initiative.`);
+    return;
+  }
+
+  return rollInitiativeForToken(actor, token, { combat });
+}
+
 function getActorCombatant(combat, actor) {
   return combat?.combatants?.find(combatant => combatant.actor?.id === actor?.id) || null;
 }
@@ -2037,7 +2120,7 @@ function getFirstInitiativeValue(combat) {
     .map(combatant => Number(combatant.initiative))
     .filter(value => Number.isFinite(value));
 
-  return initiatives.length ? Math.max(...initiatives) + 1 : 0;
+  return initiatives.length ? Math.min(...initiatives) - 1 : 0;
 }
 
 async function spendTempoInitiative(combat, actor) {
@@ -2103,24 +2186,6 @@ async function promptTempoAtRoundStart(combat) {
   }
 }
 
-function getTokenForActor(actor) {
-  return canvas.tokens.controlled.find(t => t.actor?.id === actor.id)
-    || canvas.tokens.placeables.find(t => t.actor?.id === actor.id);
-}
-
-function getPrimaryTargetToken() {
-  return Array.from(game.user.targets)[0];
-}
-
-function getSquareDistanceBetweenTokens(sourceToken, targetToken) {
-  if (!sourceToken || !targetToken) return null;
-
-  const gridSize = canvas.grid.size;
-  const dx = Math.abs(sourceToken.center.x - targetToken.center.x) / gridSize;
-  const dy = Math.abs(sourceToken.center.y - targetToken.center.y) / gridSize;
-
-  return Math.max(dx, dy);
-}
 function getWeaponFeats(weapon) {
   const system = weapon.system || {};
 
@@ -5916,27 +5981,57 @@ Hooks.once("init", function () {
   return true;
 });
 
-Hooks.once("ready", function () {
-  installCompendiumCreationFallbacks();
+function compareTwilightInitiative(a, b) {
+  const aInitiative = Number(a?.initiative);
+  const bInitiative = Number(b?.initiative);
+  const aValue = Number.isFinite(aInitiative) ? aInitiative : Number.POSITIVE_INFINITY;
+  const bValue = Number.isFinite(bInitiative) ? bInitiative : Number.POSITIVE_INFINITY;
+
+  if (aValue !== bValue) return aValue - bValue;
+
+  const nameCompare = String(a?.name || "").localeCompare(String(b?.name || ""));
+  if (nameCompare) return nameCompare;
+
+  return String(a?.id || "").localeCompare(String(b?.id || ""));
+}
+
+function installTwilightCombatOverrides() {
+  Combat.prototype._sortCombatants = function (a, b) {
+    return compareTwilightInitiative(a, b);
+  };
 
   Combat.prototype.rollInitiative = async function (ids, options = {}) {
     ids = typeof ids === "string" ? [ids] : ids;
-    const rolledActors = new Set();
+    const rolledTokenKeys = new Set();
 
     for (const id of ids) {
       const combatant = this.combatants.get(id);
       if (!combatant?.actor) continue;
 
-      const actor = combatant.actor;
+      const tokenKey = getCombatantTokenKey(combatant);
+      if (rolledTokenKeys.has(tokenKey)) continue;
+      rolledTokenKeys.add(tokenKey);
 
-      if (rolledActors.has(actor.id)) continue;
-      rolledActors.add(actor.id);
-
-      await rollInitiativeForActor(actor);
+      await rollInitiativeForCombatant(combatant, { combat: this });
     }
 
     return this;
   };
+}
+
+function allowNegativeCombatantInitiativeInput(html) {
+  const root = html instanceof HTMLElement ? html : html?.[0];
+  if (!root) return;
+
+  root.querySelectorAll("input[name='initiative'], input[data-action='updateInitiative']").forEach(input => {
+    input.removeAttribute("min");
+    input.step = input.step || "1";
+  });
+}
+
+Hooks.once("ready", function () {
+  installCompendiumCreationFallbacks();
+  installTwilightCombatOverrides();
 });
 
 Hooks.on("renderCombatTracker", (app, html) => {
@@ -5953,9 +6048,7 @@ Hooks.on("renderCombatTracker", (app, html) => {
       row.querySelector(".initiative") ||
       row.querySelector("[data-tooltip='Initiative']");
 
-    if (initiativeEl) {
-      initiativeEl.textContent = Math.abs(combatant.initiative);
-    }
+    if (initiativeEl) initiativeEl.textContent = combatant.initiative;
   }
 
   root.querySelectorAll(".combatant-control[data-control='rollInitiative']").forEach(button => {
@@ -5972,9 +6065,15 @@ Hooks.on("renderCombatTracker", (app, html) => {
         return;
       }
 
-      await rollInitiativeForActor(combatant.actor);
+      await rollInitiativeForCombatant(combatant);
     });
   });
+
+  allowNegativeCombatantInitiativeInput(html);
+});
+
+Hooks.on("renderCombatantConfig", (app, html) => {
+  allowNegativeCombatantInitiativeInput(html);
 });
 
   CONFIG.statusEffects = [
@@ -6187,9 +6286,9 @@ Hooks.on("updateCombat", async (combat, changed) => {
   const combatant = combat.combatant;
   const actor = combatant?.actor;
 
-  if (actor) {
-    const threatTurn = Number(combatant.getFlag("twilight-sword", "threatTurn") || 1);
+  const threatTurn = Number(combatant?.getFlag("twilight-sword", "threatTurn") || 1);
 
+  if (actor) {
     if (actor.type !== "monster" || threatTurn === 1) {
       await setReactionUsed(actor, false);
     }
@@ -6199,7 +6298,9 @@ Hooks.on("updateCombat", async (combat, changed) => {
   if (!actor) return;
 
   await processMonsterStartOfTurnAbilities(actor, combat, combatant);
-  await processStartOfTurnStatuses(actor);
+  if (actor.type !== "monster" || threatTurn === 1) {
+    await processStartOfTurnStatuses(actor, combat, combatant);
+  }
 });
 
 Hooks.on("renderCompendium", (app, html) => {
