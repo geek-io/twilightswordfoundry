@@ -2093,7 +2093,7 @@ async function rollInitiativeForActor(actor) {
   return rollInitiativeForToken(actor, token);
 }
 
-async function rollInitiativeForCombatant(combatant, { combat = game.combat } = {}) {
+async function rollInitiativeForCombatant(combatant, { combat = null } = {}) {
   const actor = combatant?.actor;
 
   if (!actor) {
@@ -2101,14 +2101,39 @@ async function rollInitiativeForCombatant(combatant, { combat = game.combat } = 
     return;
   }
 
-  const token = getTokenFromCombatant(combatant) || getTokenForActor(actor);
+  combat = combat || combatant.parent || combatant.combat;
 
-  if (!token) {
-    ui.notifications.warn(`Place or select a token for ${actor.name} before rolling initiative.`);
+  if (!combat) {
+    ui.notifications.warn("Could not find the combat encounter for this combatant.");
     return;
   }
 
-  return rollInitiativeForToken(actor, token, { combat });
+  const token = getTokenFromCombatant(combatant);
+  const { tempoModifier, swiftModifier, total: modifier } = getInitiativeRollModifier(actor);
+  const roll = await new Roll("1d12").evaluate();
+  const total = Math.max(roll.total + modifier, 1);
+  const modifierText = modifier
+    ? `${modifier < 0 ? " - " : " + "}${Math.abs(modifier)} = ${total}`
+    : `${total}`;
+  const name = combatant.name || actor.name;
+
+  await combat.setInitiative(combatant.id, total);
+
+  await ChatMessage.create({
+    speaker: ChatMessage.getSpeaker({ actor, token: token?.document }),
+    rolls: compactRolls(roll),
+    content: `
+      <div class="ts-chat-card">
+        <h2>${escapeHtml(name)} rolls Initiative</h2>
+        ${tempoModifier ? `<p><strong>Tempo:</strong> -1 to initiative rolls.</p>` : ""}
+        ${swiftModifier ? `<p><strong>Swift:</strong> -1 to initiative rolls, minimum 1.</p>` : ""}
+        <p><strong>Twilight Sword Initiative:</strong> ${modifier ? `${roll.total}${modifierText}` : total}</p>
+        <p><em>Lower goes first.</em></p>
+      </div>
+    `
+  });
+
+  ui.notifications.info(`${name} rolled initiative ${total}.`);
 }
 
 function getActorCombatant(combat, actor) {
@@ -6002,21 +6027,23 @@ function installTwilightCombatOverrides() {
 
   Combat.prototype.rollInitiative = async function (ids, options = {}) {
     ids = typeof ids === "string" ? [ids] : ids;
-    const rolledTokenKeys = new Set();
 
     for (const id of ids) {
       const combatant = this.combatants.get(id);
       if (!combatant?.actor) continue;
-
-      const tokenKey = getCombatantTokenKey(combatant);
-      if (rolledTokenKeys.has(tokenKey)) continue;
-      rolledTokenKeys.add(tokenKey);
 
       await rollInitiativeForCombatant(combatant, { combat: this });
     }
 
     return this;
   };
+
+  const CombatTracker = foundry.applications?.sidebar?.tabs?.CombatTracker;
+  if (CombatTracker?.prototype) {
+    CombatTracker.prototype._onRollInitiative = function (combatant) {
+      return rollInitiativeForCombatant(combatant, { combat: this.viewed });
+    };
+  }
 }
 
 function allowNegativeCombatantInitiativeInput(html) {
@@ -6029,6 +6056,63 @@ function allowNegativeCombatantInitiativeInput(html) {
   });
 }
 
+function isCombatTrackerInitiativeRollControl(target) {
+  if (!(target instanceof HTMLElement)) return false;
+
+  const explicitControl = target.closest(
+    "[data-control='rollInitiative'], [data-action='rollInitiative'], [data-action='roll-initiative']"
+  );
+
+  if (explicitControl) return true;
+
+  const tooltipControl = target.closest("[data-tooltip], [aria-label], [title]");
+  const tooltipText = [
+    tooltipControl?.dataset?.tooltip,
+    tooltipControl?.getAttribute("aria-label"),
+    tooltipControl?.getAttribute("title")
+  ].filter(Boolean).join(" ").toLowerCase();
+
+  if (tooltipText.includes("initiative") && tooltipText.includes("roll")) return true;
+
+  const initiativeElement = target.closest(".token-initiative, .combatant-initiative, .initiative");
+  if (!initiativeElement) return false;
+
+  return Boolean(
+    target.closest("i, svg, button, a") ||
+    initiativeElement.querySelector(".fa-dice-d20, .fa-dice, [data-icon='dice-d20']")
+  );
+}
+
+async function handleCombatTrackerInitiativeClick(event, combat = game.combat) {
+  if (!isCombatTrackerInitiativeRollControl(event.target)) return;
+
+  const row = event.target.closest("[data-combatant-id]");
+  const combatantId = row?.dataset.combatantId;
+  const combatant = combat?.combatants.get(combatantId);
+
+  if (!combatant) return;
+
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  event.stopPropagation();
+
+  if (!combatant.actor) {
+    ui.notifications.warn("Could not find combatant actor.");
+    return;
+  }
+
+  await rollInitiativeForCombatant(combatant, { combat });
+}
+
+function activateCombatTrackerInitiativeInterception(root, combat = game.combat) {
+  if (!root || root.dataset.twilightInitiativeInterception === "true") return;
+
+  root.dataset.twilightInitiativeInterception = "true";
+  root.addEventListener("click", event => {
+    handleCombatTrackerInitiativeClick(event, combat);
+  }, true);
+}
+
 Hooks.once("ready", function () {
   installCompendiumCreationFallbacks();
   installTwilightCombatOverrides();
@@ -6036,8 +6120,10 @@ Hooks.once("ready", function () {
 
 Hooks.on("renderCombatTracker", (app, html) => {
   const root = html instanceof HTMLElement ? html : html[0];
+  const combat = app.viewed || game.combat;
+  activateCombatTrackerInitiativeInterception(root, combat);
 
-  for (const combatant of game.combat?.combatants ?? []) {
+  for (const combatant of combat?.combatants ?? []) {
     if (combatant.initiative === null || combatant.initiative === undefined) continue;
 
     const row = root.querySelector(`[data-combatant-id="${combatant.id}"]`);
@@ -6054,18 +6140,19 @@ Hooks.on("renderCombatTracker", (app, html) => {
   root.querySelectorAll(".combatant-control[data-control='rollInitiative']").forEach(button => {
     button.addEventListener("click", async event => {
       event.preventDefault();
+      event.stopImmediatePropagation();
       event.stopPropagation();
 
       const row = button.closest("[data-combatant-id]");
       const combatantId = row?.dataset.combatantId;
-      const combatant = game.combat?.combatants.get(combatantId);
+      const combatant = combat?.combatants.get(combatantId);
 
       if (!combatant?.actor) {
         ui.notifications.warn("Could not find combatant actor.");
         return;
       }
 
-      await rollInitiativeForCombatant(combatant);
+      await rollInitiativeForCombatant(combatant, { combat });
     });
   });
 
