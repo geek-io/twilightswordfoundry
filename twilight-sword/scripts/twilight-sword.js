@@ -1971,8 +1971,12 @@ function getSquareDistanceBetweenTokens(sourceToken, targetToken) {
 }
 
 async function syncThreatCombatants(combat, actor, token) {
-  const turns = getMonsterThreatTurns(actor);
+  let turns = getMonsterThreatTurns(actor);
   const existing = getCombatantsForActorToken(combat, actor, token);
+  if (String(actor.system.level).trim().toUpperCase() === "X") {
+    turns = Number(existing.find(entry => entry.getFlag("twilight-sword", "bossThreat"))?.getFlag("twilight-sword", "bossThreat"));
+    if (!Number.isInteger(turns) || turns < 1) return existing;
+  }
 
   if (existing.length < turns) {
     const toCreate = Array.from({ length: turns - existing.length }, (_, index) => ({
@@ -1987,7 +1991,7 @@ async function syncThreatCombatants(combat, actor, token) {
       }
     }));
 
-    const created = await combat.createEmbeddedDocuments("Combatant", toCreate);
+    const created = await combat.createEmbeddedDocuments("Combatant", toCreate, { turnEvents: false });
     existing.push(...created);
   }
 
@@ -2037,6 +2041,7 @@ async function rollInitiativeForToken(actor, token, { combat: providedCombat = g
     });
   }
 
+  if (!(await prepareBossInitiative(combat, actor, token))) return;
   const { tempoModifier, swiftModifier, total: modifier } = getInitiativeRollModifier(actor);
   const combatants = await syncThreatCombatants(combat, actor, token);
   const rolls = [];
@@ -2093,7 +2098,7 @@ async function rollInitiativeForActor(actor) {
   return rollInitiativeForToken(actor, token);
 }
 
-async function rollInitiativeForCombatant(combatant, { combat = null } = {}) {
+async function rollInitiativeForCombatant(combatant, { combat = null, syncThreat = true } = {}) {
   const actor = combatant?.actor;
 
   if (!actor) {
@@ -2109,6 +2114,15 @@ async function rollInitiativeForCombatant(combatant, { combat = null } = {}) {
   }
 
   const token = getTokenFromCombatant(combatant);
+  if (syncThreat && !(await prepareBossInitiative(combat, actor, token))) return;
+  if (syncThreat && actor.type === "monster" && token) {
+    const turns = await syncThreatCombatants(combat, actor, token);
+    for (const turn of turns) {
+      if (turn.id !== combatant.id && turn.initiative == null) {
+        await rollInitiativeForCombatant(turn, { combat, syncThreat: false });
+      }
+    }
+  }
   const { tempoModifier, swiftModifier, total: modifier } = getInitiativeRollModifier(actor);
   const roll = await new Roll("1d12").evaluate();
   const total = Math.max(roll.total + modifier, 1);
@@ -2134,6 +2148,34 @@ async function rollInitiativeForCombatant(combatant, { combat = null } = {}) {
   });
 
   ui.notifications.info(`${name} rolled initiative ${total}.`);
+}
+
+async function prepareBossInitiative(combat, actor, token) {
+  if (actor.type !== "monster" || String(actor.system.level).trim().toUpperCase() !== "X") return true;
+  if (!token) return false;
+  const entries = getCombatantsForActorToken(combat, actor, token);
+  if (entries.some(entry => Number(entry.getFlag("twilight-sword", "bossThreat")) > 0)) return true;
+  const threat = await new Promise(resolve => {
+    new Dialog({
+      title: `${actor.name}: Boss Threat`,
+      content: '<form><label>Threat <input name="threat" type="number" min="1" step="1" value="1"></label></form>',
+      buttons: { roll: { label: "Roll Initiative", callback: html => {
+        const value = Number(html[0].querySelector('[name="threat"]').value);
+        resolve(Number.isInteger(value) && value > 0 ? value : null);
+      } } },
+      default: "roll",
+      close: () => resolve(null)
+    }).render(true);
+  });
+  if (threat === null) return false;
+  if (!entries.length) {
+    entries.push(...await combat.createEmbeddedDocuments("Combatant", [{
+      tokenId: token.id, sceneId: token.document.parent.id, actorId: actor.id,
+      flags: { "twilight-sword": { bossThreat: threat, threatTurn: 1 } }
+    }], { turnEvents: false }));
+  }
+  for (const entry of entries) await entry.setFlag("twilight-sword", "bossThreat", threat);
+  return true;
 }
 
 function getActorCombatant(combat, actor) {
@@ -3172,6 +3214,62 @@ function getMonsterVariantSummary(actor) {
     traits,
     text: traits.join(", ")
   };
+}
+
+function getActorSystemObject(actor) {
+  const system = actor?.system || {};
+
+  if (typeof system.toObject === "function") {
+    return system.toObject();
+  }
+
+  return foundry.utils.deepClone(system);
+}
+
+function getActorItemsArray(actor) {
+  if (!actor?.items) return [];
+  if (Array.isArray(actor.items)) return actor.items;
+  return actor.items.contents || Array.from(actor.items);
+}
+
+function getDefaultMonsterVariantSummary() {
+  return {
+    rank: "none",
+    rankLabel: "None",
+    elementalType: "none",
+    elementalTypeLabel: "None",
+    baseThreat: 1,
+    effectiveThreat: 1,
+    baseArmor: 0,
+    effectiveArmor: 0,
+    baseHeartsMax: 0,
+    effectiveHeartsMax: 0,
+    damageBonus: 0,
+    effectiveAffinity: "none",
+    effectiveAffinityLabel: "None",
+    hasVariant: false,
+    traits: [],
+    text: ""
+  };
+}
+
+function prepareMonsterSheetSystem(actor) {
+  const system = getActorSystemObject(actor);
+
+  system.abilities ||= {};
+  system.hearts ||= {};
+  system.stamina ||= {};
+  system.armor ||= {};
+  system.variant ||= {};
+  system.actions = Array.isArray(system.actions) ? system.actions : [];
+  system.description ||= "";
+  system.notes ||= "";
+  system.level ??= 1;
+  system.elementalAffinity ||= "none";
+  system.variant.rank ||= "none";
+  system.variant.elementalType ||= "none";
+
+  return system;
 }
 
 function getMonsterRotationGroupKey(actor) {
@@ -5194,6 +5292,15 @@ class TwilightSwordChampionSheet extends ActorSheet {
 
   activateListeners(html) {
     super.activateListeners(html);
+
+    try {
+      this._activateChampionListeners(html);
+    } catch (err) {
+      console.error("Twilight Sword | Failed to activate champion sheet listeners", err);
+    }
+  }
+
+  _activateChampionListeners(html) {
     activateActorStatTabOrder(html);
     activateResourcePipListeners(this.actor, html);
 
@@ -5572,19 +5679,33 @@ class TwilightSwordMonsterSheet extends ActorSheet {
 
   async getData(options = {}) {
     const context = await super.getData(options);
-    const system = this.actor.system;
-    const monsterVariant = getMonsterVariantSummary(this.actor);
-    const monsterRotation = getMonsterRotationState(this.actor);
+    const system = prepareMonsterSheetSystem(this.actor);
+    let monsterVariant = getDefaultMonsterVariantSummary();
+    let monsterRotation = { active: false, nextIndex: 0, lastIndex: null, groupKey: this.actor.id || "monster" };
+
+    try {
+      monsterVariant = getMonsterVariantSummary(this.actor);
+    } catch (err) {
+      console.error("Twilight Sword | Failed to prepare monster variant data", err);
+    }
+
+    try {
+      monsterRotation = getMonsterRotationState(this.actor);
+    } catch (err) {
+      console.error("Twilight Sword | Failed to prepare monster rotation data", err);
+    }
+
     const actions = Array.isArray(system.actions) ? system.actions : [];
     const nextRotationAction = actions.length
       ? actions[getNextMonsterRotationIndex(this.actor, monsterRotation.nextIndex)]
       : null;
+    const items = getActorItemsArray(this.actor);
 
     context.system = system;
-    context.items = this.actor.items;
-    context.feats = this.actor.items.filter(i => i.type === "feat");
-    context.spells = getActorSpellList(this.actor);
-    context.activeSpells = getActiveSpells(this.actor);
+    context.items = items;
+    context.feats = items.filter(i => i.type === "feat");
+    context.spells = [];
+    context.activeSpells = [];
     context.monsterVariant = monsterVariant;
     context.hearts = buildPips(system.hearts?.value, monsterVariant.effectiveHeartsMax, "heart");
     context.stamina = buildPips(system.stamina?.value, system.stamina?.max, "stamina");
@@ -5599,15 +5720,50 @@ class TwilightSwordMonsterSheet extends ActorSheet {
       hasActions: actions.length > 0
     };
 
-    if (!Array.isArray(context.system.actions)) {
-      context.system.actions = [];
+    try {
+      context.spells = getActorSpellList(this.actor);
+    } catch (err) {
+      console.error("Twilight Sword | Failed to prepare monster spells", err);
+    }
+
+    try {
+      context.activeSpells = getActiveSpells(this.actor);
+    } catch (err) {
+      console.error("Twilight Sword | Failed to prepare monster active spells", err);
     }
 
     return context;
   }
 
+  async _renderInner(data) {
+    try {
+      return await super._renderInner(data);
+    } catch (err) {
+      console.error("Twilight Sword | Failed to render monster sheet template", err);
+
+      const safeName = escapeHtml(this.actor?.name || "Monster");
+      return $(`
+        <form class="${data.cssClass || ""}" autocomplete="off">
+          <section class="zelda-panel">
+            <h2>${safeName}</h2>
+            <p>The monster sheet could not render. Check the browser console for the Twilight Sword template error.</p>
+          </section>
+        </form>
+      `);
+    }
+  }
+
   activateListeners(html) {
     super.activateListeners(html);
+
+    try {
+      this._activateMonsterListeners(html);
+    } catch (err) {
+      console.error("Twilight Sword | Failed to activate monster sheet listeners", err);
+    }
+  }
+
+  _activateMonsterListeners(html) {
     activateActorStatTabOrder(html);
     activateResourcePipListeners(this.actor, html);
 
@@ -5908,6 +6064,13 @@ class TwilightSwordItemSheet extends ItemSheet {
   activateListeners(html) {
     super.activateListeners(html);
 
+    html.find(".roll-initiative").click(async event => {
+      event.preventDefault();
+      const actor = this.item.actor;
+      if (!actor) return ui.notifications.warn("Place this item on an actor to roll initiative.");
+      await rollInitiativeForActor(actor);
+    });
+
     html.find(".use-item").click(async () => {
       const item = this.item;
       const actor = item.parent;
@@ -5940,8 +6103,41 @@ class TwilightSwordItemSheet extends ItemSheet {
 
 // Hooks
 
+Hooks.on("createCombatant", (combatant, options, userId) => {
+  if (userId !== game.user.id || combatant.actor?.type !== "monster") return;
+  if (combatant.getFlag("twilight-sword", "threatTurn")) return;
+  const token = getTokenFromCombatant(combatant);
+  if (token) setTimeout(() => {
+    syncThreatCombatants(combatant.parent, combatant.actor, token).catch(error => {
+      console.error("Twilight Sword | Failed to create Threat initiative entries", error);
+      ui.notifications.error("Could not create monster Threat initiative entries. See console for details.");
+    });
+  }, 0);
+});
+
+function registerFoundryV14TemplateCompatibilityHelpers() {
+  if (Handlebars.helpers.select) return;
+
+  Handlebars.registerHelper("select", function (selected, options) {
+    const selectedValues = new Set([selected].flat().map(value => String(value ?? "")));
+    const html = options.fn(this).replace(
+      /(<option\b[^>]*\bvalue=(["'])(.*?)\2[^>]*)(>)/gi,
+      (match, optionStart, _quote, value, optionEnd) => {
+        if (!selectedValues.has(String(value))) return match;
+        if (/\sselected(?:\s|=|>)/i.test(optionStart)) return match;
+
+        return `${optionStart} selected${optionEnd}`;
+      }
+    );
+
+    return new Handlebars.SafeString(html);
+  });
+}
+
 Hooks.once("init", function () {
   console.log("Twilight Sword | Initializing");
+
+  registerFoundryV14TemplateCompatibilityHelpers();
 
   Handlebars.registerHelper("tsHasWeaponFeat", (item, feat) =>
     getWeaponFeats(item).has(String(feat || "").toLowerCase())

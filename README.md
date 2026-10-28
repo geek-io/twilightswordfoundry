@@ -1,32 +1,42 @@
 # Twilight Sword
-A Foundry v13 system for Twilight Sword by Two Little Mice
+A Foundry v14 system for Twilight Sword by Two Little Mice
 - Module by: Geek IO Dev Team
 
-# v 0.1.0
-- Initial Release
+# v 0.2.1
+- Boss monsters can use X as their Base Threat.
+- Rolling boss initiative prompts for encounter Threat and creates that many independently rolled entries.
 
-# v 0.1.1
-- Bug fixes.  
-- Implemented simple "Way" cards.  
-- Ways can now be dragged and dropped into the Champion card for ease.  
-- Way feats are restricted to Ways on the Champion card.  
-- Way feats are restricted to only once on each Champion, with the exception of if the Way feat says in the description "You can choose this feat multiple times" exactly. These are referred to as "training" feats in the book.
-- Automated some feats to allow for extra uses of spells, items, etc.  
-- "Lockpick" / "Lock Pick" items are a special case consumable item that will prompt in the chat if the Stealth roll is failed to see if the lockpick breaks. If the stealth roll fails again, then the lockpick will be consumed.  
-- Implemented a Boon marker on the Champion sheet.  
+# v 0.2.0
+- Monsters receive one initiative entry per effective Threat level for each placed token.
+- Each Threat entry rolls initiative independently: Threat 2 rolls twice, Threat 3 rolls three times.
 
-# v 0.1.2
-- Bug fixes.  
-- Implemented ability to create items on Champion cards.  
-- Made a bonus field for health, to manually increase health for things like Kin bonuses.  
-- Added compendium ability. 
+# v 0.1.9
+- Bug fixes.
+- Officially moved system compatibility to Foundry VTT v14.
 
-# v 0.1.3
+# v 0.1.8
+- Bug fixes.
+- Fixed Twilight Sword initiative sorting to run low-to-high for rolled and manually entered initiative.
+- Fixed manual initiative inputs so negative values can be entered.
+- Fixed initiative rolling for multiple monsters that share the same actor.
+- Reduced duplicate start-of-turn status and regeneration rolls for monster threat turns.
+
+# v 0.1.7
+- Bug fixes.
+- Added the ability to drag and drop spells onto monster cards, for cards like Hornex and Wizzorb.
+
+# v 0.1.6
+- Bug fixes.
+- New update to core rules from 2LM, including:
+	- More spells now either don't require a roll or have an "on a fail" effect
+		- The system now appropriately has a "none" for a cast dropdown.
+	- NPCs can now take reactions
+	- Casting from legendary artifacts does NOT require a roll anymore
+	- Elemental damage from the Elemental feat now also applies to arcane missiles
+
+# v 0.1.5
 - Bug fixes.  
-- Implemented heart / stamina stone usage. Using these will increase your hearts / stamina by 1 permanently, then be consumed.   
-- Updated NPC sheets to be more like Champion sheets, but more streamlined and lightweight.  
-- Added the ability to click on Hearts and Stamina points to add / subtract.  
-- Added the ability to tab through the stats on Champion, Monster, and NPC sheets.  
+- Allows for monster actions to be moved up/down.
 
 # v 0.1.4
 - Bug fixes.
@@ -40,26 +50,28 @@ A Foundry v13 system for Twilight Sword by Two Little Mice
 	- Others will be added over time.
 - Added "Twlight" elemental type - it is Strong to every other element, and every other element is weak to it.
 
-# v 0.1.5
+# v 0.1.3
 - Bug fixes.  
-- Allows for monster actions to be moved up/down.  
+- Implemented heart / stamina stone usage. Using these will increase your hearts / stamina by 1 permanently, then be consumed.   
+- Updated NPC sheets to be more like Champion sheets, but more streamlined and lightweight.  
+- Added the ability to click on Hearts and Stamina points to add / subtract.  
+- Added the ability to tab through the stats on Champion, Monster, and NPC sheets.
 
-# v 0.1.6
-- Bug fixes.
-- New update to core rules from 2LM, including:
-	- More spells now either don't require a roll or have an "on a fail" effect
-		- The system now appropriately has a "none" for a cast dropdown.
-	- NPCs can now take reactions
-	- Casting from legendary artifacts does NOT require a roll anymore
-	- Elemental damage from the Elemental feat now also applies to arcane missiles
+# v 0.1.2
+- Bug fixes.  
+- Implemented ability to create items on Champion cards.  
+- Made a bonus field for health, to manually increase health for things like Kin bonuses.  
+- Added compendium ability.
 
-# v 0.1.7
-- Bug fixes.
-- Added the ability to drag and drop spells onto monster cards, for cards like Hornex and Wizzorb.
+# v 0.1.1
+- Bug fixes.  
+- Implemented simple "Way" cards.  
+- Ways can now be dragged and dropped into the Champion card for ease.  
+- Way feats are restricted to Ways on the Champion card.  
+- Way feats are restricted to only once on each Champion, with the exception of if the Way feat says in the description "You can choose this feat multiple times" exactly. These are referred to as "training" feats in the book.
+- Automated some feats to allow for extra uses of spells, items, etc.  
+- "Lockpick" / "Lock Pick" items are a special case consumable item that will prompt in the chat if the Stealth roll is failed to see if the lockpick breaks. If the stealth roll fails again, then the lockpick will be consumed.  
+- Implemented a Boon marker on the Champion sheet.
 
-# v 0.1.8
-- Bug fixes.
-- Fixed Twilight Sword initiative sorting to run low-to-high for rolled and manually entered initiative.
-- Fixed manual initiative inputs so negative values can be entered.
-- Fixed initiative rolling for multiple monsters that share the same actor.
-- Reduced duplicate start-of-turn status and regeneration rolls for monster threat turns.
+# v 0.1.0
+- Initial Release
